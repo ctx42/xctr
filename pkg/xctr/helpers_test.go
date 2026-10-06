@@ -86,6 +86,7 @@ func Test_Ref_tabular(t *testing.T) {
 			"example.com/repo/name:tag",
 		},
 		{"name, tag", "", "name", "tag", "name:tag"},
+		{"digest", "repo", "name", "sha256:abc", "repo/name@sha256:abc"},
 		{"name", "", "name", "", "name"},
 		{"no name, tag", "", "", "tag", ""},
 		{"all empty", "", "", "", ""},
@@ -152,6 +153,13 @@ func Test_ParseRef_tabular(t *testing.T) {
 			"" +
 				"sha256:1234567890abcdef1234567890abcdef" +
 				"1234567890abcdef1234567890abcdef",
+		},
+		{
+			"registry named like docker.io",
+			"docker.io.mirror.local/library/ubuntu:20.04",
+			"docker.io.mirror.local",
+			"library/ubuntu",
+			"20.04",
 		},
 		{
 			"invalid",

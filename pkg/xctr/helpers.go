@@ -40,7 +40,7 @@ func ToBuildArgs(ba map[string]string) map[string]*string {
 }
 
 // Ref returns an image reference based on the repo name, image name, and image
-// tag.
+// tag. A tag in digest form, "sha256:<hex>", is joined with "@".
 func Ref(repo, name, tag string) string {
 	ref := strings.TrimRight(repo, "/")
 	if name == "" {
@@ -52,6 +52,10 @@ func Ref(repo, name, tag string) string {
 	ref += name
 	if tag == "" {
 		return ref
+	}
+	// A tag never contains a colon; a digest always does.
+	if strings.Contains(tag, ":") {
+		return ref + "@" + tag
 	}
 	return ref + ":" + tag
 }
@@ -79,8 +83,7 @@ func ParseRef(ref string) (string, string, string) {
 
 	repo := reference.Domain(named)
 	path := reference.Path(named)
-	if strings.HasPrefix(repo, "docker.io") &&
-		strings.HasPrefix(path, "library/") {
+	if repo == "docker.io" && strings.HasPrefix(path, "library/") {
 		path, _ = strings.CutPrefix(path, "library/")
 	}
 
