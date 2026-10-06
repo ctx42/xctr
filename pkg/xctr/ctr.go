@@ -69,7 +69,9 @@ type Option func(*CTR)
 // [CTR.Terminate].
 func WithCTRImgRm(ctr *CTR) { ctr.removeImage = true }
 
-// WithCTRLogger is an option for [NewCTR] setting a custom log consumer.
+// WithCTRLogger is an option for [NewCTR] setting a custom log consumer. The
+// consumer is attached whether or not [EnvCTRLog] is set, unless the request
+// already has a log consumer config.
 func WithCTRLogger(lc tc.LogConsumer) Option {
 	return func(ctr *CTR) { ctr.log = lc }
 }
@@ -691,7 +693,8 @@ func buildMeta(env []string, name string, scm scmInfo) startMeta {
 }
 
 // prepareRequest returns a request ready for GenericContainer: provenance
-// labels and env, optional build args, entrypoint override, and log consumer.
+// labels and env, optional build args, entrypoint override, and log consumer:
+// the custom one when given, else a printing one when [EnvCTRLog] is "true".
 func prepareRequest(
 	req tc.GenericContainerRequest,
 	meta startMeta,
@@ -737,13 +740,15 @@ func prepareRequest(
 
 	req.Env = SetMissing(req.Env, envMap)
 
-	if ring.EnvGet(env, EnvCTRLog) == "true" && req.LogConsumerCfg == nil {
+	if req.LogConsumerCfg == nil {
 		lc := log
-		if lc == nil {
+		if lc == nil && ring.EnvGet(env, EnvCTRLog) == "true" {
 			lc = NewLogger(true)
 		}
-		req.LogConsumerCfg = &tc.LogConsumerConfig{
-			Consumers: []tc.LogConsumer{lc},
+		if lc != nil {
+			req.LogConsumerCfg = &tc.LogConsumerConfig{
+				Consumers: []tc.LogConsumer{lc},
+			}
 		}
 	}
 

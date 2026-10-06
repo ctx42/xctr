@@ -1839,6 +1839,49 @@ func Test_prepareRequest(t *testing.T) {
 		assert.Same(t, lc, have.LogConsumerCfg.Consumers[0])
 	})
 
+	t.Run("custom log consumer without EnvCTRLog", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.ImageReq()
+		lc := NewLogger(false)
+		meta := buildMeta(nil, "echo", scmInfo{})
+
+		// --- When ---
+		have := prepareRequest(req, meta, nil, lc)
+
+		// --- Then ---
+		assert.NotNil(t, have.LogConsumerCfg)
+		assert.Len(t, 1, have.LogConsumerCfg.Consumers)
+		assert.Same(t, lc, have.LogConsumerCfg.Consumers[0])
+	})
+
+	t.Run("default log consumer when EnvCTRLog true", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.ImageReq()
+		env := []string{EnvCTRLog + "=true"}
+		meta := buildMeta(nil, "echo", scmInfo{})
+
+		// --- When ---
+		have := prepareRequest(req, meta, env, nil)
+
+		// --- Then ---
+		assert.NotNil(t, have.LogConsumerCfg)
+		assert.Len(t, 1, have.LogConsumerCfg.Consumers)
+		var lgr *Logger
+		assert.Type(t, &lgr, have.LogConsumerCfg.Consumers[0])
+	})
+
+	t.Run("no log consumer by default", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.ImageReq()
+		meta := buildMeta(nil, "echo", scmInfo{})
+
+		// --- When ---
+		have := prepareRequest(req, meta, nil, nil)
+
+		// --- Then ---
+		assert.Nil(t, have.LogConsumerCfg)
+	})
+
 	t.Run("preserves existing BuildOptionsModifier", func(t *testing.T) {
 		// --- Given ---
 		req := xctrtest.DockerfileReq()
@@ -2084,7 +2127,6 @@ func Test_CTR_Start(t *testing.T) {
 		ctx := t.Context()
 		env := []string{
 			xdef.EnvBldDate + "=2000-01-02T03:04:05Z",
-			EnvCTRLog + "=true",
 		}
 		lc := NewLogger(false)
 		ctr := NewCTR(t.Name(), xctrtest.ImageReq(), WithCTRLogger(lc))

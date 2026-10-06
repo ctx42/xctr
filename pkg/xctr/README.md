@@ -157,7 +157,8 @@ matches a command that exited non-zero.
 
 The two log switches take effect only when the value is exactly `true`, which
 is what `SetEnvCTRLog` and `SetEnvCTRBuildLog` set. `C42_XCTR_LOG` is ignored
-when the request already has a `LogConsumerCfg`.
+when the request already has a `LogConsumerCfg` or a consumer was passed with
+`WithCTRLogger`, which is attached regardless of the switch.
 
 The `C42_XCTR_ENTRYPOINT` value is split on single spaces, so quoted arguments
 are not supported. `SetEnvCTREntrypoint(env)` with no command sets
