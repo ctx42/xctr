@@ -2249,8 +2249,8 @@ func Test_CTR_Start(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		gotCtr := must.Value(dkrkit.NewT(t).CtrPs().FindByID(ctr.ID()))
-		assert.HasKeyValue(t, "test", "abc", gotCtr.Labels)
+		hCtr := must.Value(dkrkit.NewT(t).CtrPs().FindByID(ctr.ID()))
+		assert.HasKeyValue(t, "test", "abc", hCtr.Labels)
 	})
 
 	t.Run("collect logs", func(t *testing.T) {
