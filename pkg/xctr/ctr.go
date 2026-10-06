@@ -22,6 +22,7 @@ import (
 	"github.com/ctx42/gitaid/pkg/gitaid"
 	"github.com/ctx42/ring/pkg/ring"
 	"github.com/ctx42/xdef/pkg/xdef"
+	"github.com/distribution/reference"
 	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -556,8 +557,14 @@ func deleteImage(ctx context.Context, ref string) error {
 	}
 	defer func() { _ = cli.Close() }()
 
+	// The Docker reference filter matches only the familiar form of a name,
+	// "ealen/echo-server:0.9.2", never "docker.io/ealen/echo-server:0.9.2".
+	filter := ref
+	if named, err := reference.ParseNormalizedNamed(ref); err == nil {
+		filter = reference.FamiliarString(named)
+	}
 	lsOpts := client.ImageListOptions{
-		Filters: make(client.Filters).Add("reference", ref),
+		Filters: make(client.Filters).Add("reference", filter),
 	}
 	list, err := cli.ImageList(ctx, lsOpts)
 	if err != nil {

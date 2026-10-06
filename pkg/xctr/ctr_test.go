@@ -1565,6 +1565,22 @@ func Test_CTR_Terminate(t *testing.T) {
 	})
 }
 
+func Test_deleteImage(t *testing.T) {
+	t.Run("fully qualified reference", func(t *testing.T) {
+		// --- Given ---
+		imgRef, imgID := dkrkit.NewT(t).Build(
+			dkrkit.WithBuildPth("xctrtest/data/simple/Dockerfile"),
+		)
+
+		// --- When ---
+		err := deleteImage(t.Context(), "docker.io/library/"+imgRef)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Nil(t, dkrkit.NewT(t).ImgLs().FindByID(imgID))
+	})
+}
+
 func Test_handleErr(t *testing.T) {
 	t.Run("nil error", func(t *testing.T) {
 		// --- When ---
