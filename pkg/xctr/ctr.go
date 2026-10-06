@@ -793,16 +793,16 @@ func (ctr *CTR) startAndBind(ctx context.Context) error {
 	return nil
 }
 
-// bindStarted records runtime identity and host/guest connection config after
-// the container has been created.
+// bindStarted records runtime identity after the container has been created,
+// and the host/guest connection config when it has also been started.
 func (ctr *CTR) bindStarted(ctx context.Context) error {
+	ctr.id = ctr.dc.GetContainerID()
+	ctr.reference = ctr.dc.Image
 	if !ctr.runReq.Started {
 		return nil
 	}
 	ctr.cfgHost = make(map[string]string)
 	ctr.cfgGuest = make(map[string]string)
-	ctr.id = ctr.dc.GetContainerID()
-	ctr.reference = ctr.dc.Image
 
 	for i, ep := range ctr.runReq.ExposedPorts {
 		if _, after, ok := strings.Cut(ep, ":"); ok {

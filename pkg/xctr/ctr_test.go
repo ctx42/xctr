@@ -1981,6 +1981,11 @@ func Test_CTR_Start(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
+		assert.Equal(t, ctr.dc.GetContainerID(), ctr.ID())
+		assert.Equal(t, ctr.dc.Image, ctr.Reference())
+		assert.NotEmpty(t, ctr.Reference())
+		assert.False(t, ctr.IsRunning())
+		assert.Nil(t, ctr.ConfigHost())
 	})
 
 	t.Run("default envs set even if slice is nil", func(t *testing.T) {
