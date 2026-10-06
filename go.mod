@@ -1,3 +1,5 @@
 module github.com/ctx42/xctr
 
-go 1.26
+go 1.26.0
+
+require github.com/ctx42/testing v0.56.0
