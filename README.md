@@ -13,7 +13,7 @@ requests and lifecycle helpers.
 | Package                                                   | What it does                                                                                    |
 |-----------------------------------------------------------|-------------------------------------------------------------------------------------------------|
 | [`xctr`](pkg/xctr/README.md)                              | Testcontainers-based Docker container wrapper for Go tests: start, exec, copy files, tear down. |
-| [`xctrtest`](pkg/xctr/README.md#testing-helpers-xctrtest) | Container requests and test-lifecycle helpers used to test `xctr` itself.                       |
+| [`xctrtest`](pkg/xctr/README.md#testing-helpers-xctrtest) | Container requests and test-lifecycle helpers for container-backed tests.                       |
 
 See the [`pkg/xctr` README](pkg/xctr/README.md) for the full package
 overview, usage examples, and configuration reference.
@@ -23,6 +23,9 @@ overview, usage examples, and configuration reference.
 ```shell
 go get github.com/ctx42/xctr
 ```
+
+> [!NOTE]
+> The module is not published yet, so `go get` fails until it is.
 
 ## ctx42-family dependencies
 
@@ -38,3 +41,7 @@ go get github.com/ctx42/xctr
 
 It also depends on `testcontainers-go`, Docker's own `moby/moby` API and
 client packages, and `distribution/reference` for image reference parsing.
+
+## License
+
+MIT — see [LICENSE.md](LICENSE.md).
