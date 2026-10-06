@@ -1865,6 +1865,21 @@ func Test_prepareRequest(t *testing.T) {
 		assert.Equal(t, want, have.Entrypoint)
 	})
 
+	t.Run("entrypoint override clears Cmd", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.ImageReq()
+		req.Cmd = []string{"redis-server", "--appendonly", "yes"}
+		env := []string{EnvCTREntrypoint + "=  tail  -f /dev/null "}
+		meta := buildMeta(nil, "echo", scmInfo{})
+
+		// --- When ---
+		have := prepareRequest(req, meta, env, nil)
+
+		// --- Then ---
+		assert.Equal(t, []string{"tail", "-f", "/dev/null"}, have.Entrypoint)
+		assert.Nil(t, have.Cmd)
+	})
+
 	t.Run("log consumer when EnvCTRLog true", func(t *testing.T) {
 		// --- Given ---
 		req := xctrtest.ImageReq()

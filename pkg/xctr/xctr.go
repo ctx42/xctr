@@ -34,8 +34,9 @@ const (
 	// EnvCTREntrypoint is an environment variable with command to overwrite
 	// container's entrypoint.
 	//
-	// When set, [tc.GenericContainerRequest.WaitingFor] is set to nil; the
-	// exposed ports are kept.
+	// The value is split on whitespace. When set,
+	// [tc.GenericContainerRequest.WaitingFor] and the request's Cmd are set to
+	// nil; the exposed ports are kept.
 	EnvCTREntrypoint = "C42_XCTR_ENTRYPOINT"
 )
 

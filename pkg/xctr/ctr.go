@@ -738,9 +738,12 @@ func prepareRequest(
 		req.Labels = SetMissing(req.Labels, meta.labels)
 	}
 
+	// Docker appends Cmd to the entrypoint as arguments; drop it so the
+	// override runs alone.
 	if cmd := ring.EnvGet(env, EnvCTREntrypoint); cmd != "" {
 		req.WaitingFor = nil
-		req.Entrypoint = strings.Split(cmd, " ")
+		req.Entrypoint = strings.Fields(cmd)
+		req.Cmd = nil
 	}
 
 	req.Env = SetMissing(req.Env, envMap)
