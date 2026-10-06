@@ -4,6 +4,7 @@
 package xctr
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -24,6 +25,24 @@ func Test_ImageReq(t *testing.T) {
 		hc := &container.HostConfig{}
 		have.HostConfigModifier(hc)
 		assert.True(t, hc.AutoRemove)
+	})
+
+	t.Run("start", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR(t.Name(), ImageReq("busybox:1.38-uclibc"))
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		have := ctr.Exec(ctx, "echo", "hello")
+
+		// --- Then ---
+		assert.NoError(t, have.Err())
+		assert.Equal(t, "hello\n", have.SOut)
+		assert.Equal(t, "", have.EOut)
 	})
 }
 

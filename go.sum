@@ -4,6 +4,8 @@ github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 h1:He8af
 github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6/go.mod h1:8o94RPi1/7XTJvwPpRSzSUedZrtlirdB3r9Z20bi2f8=
 github.com/Azure/go-ansiterm v0.0.0-20260917205352-e937bb47801a h1:4hxax9ktNjSDoFn1tZSeL6gXMTRMpO0FzjdKfT01jgY=
 github.com/Azure/go-ansiterm v0.0.0-20260917205352-e937bb47801a/go.mod h1:3EWSSOZ50kb+arhww0qIaEXHToib/3FjBj9Jj5lcP5g=
+github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
+github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
@@ -22,8 +24,14 @@ github.com/cpuguy83/dockercfg v0.3.2 h1:DlJTyZGBDlXqUZ2Dk2Q3xHs/FtnooJJVaad2S9GK
 github.com/cpuguy83/dockercfg v0.3.2/go.mod h1:sugsbF4//dDlL/i+S+rtpIWp+5h0BHJHfjj5/jFyUJc=
 github.com/creack/pty v1.1.24 h1:bJrF4RRfyJnbTJqzRLHzcGaZK1NeM5kTC9jGgovnR1s=
 github.com/creack/pty v1.1.24/go.mod h1:08sCNb52WyoAwi2QDyzUCTgcvVFhUzewun7wtTfvcwE=
+github.com/ctx42/gitaid v0.7.0 h1:jh8Mhn/H2Nbg4omKXy73Q7FaqrlX0OD5be06EUp+5kc=
+github.com/ctx42/gitaid v0.7.0/go.mod h1:bElLVAP93ROt7+Wo7NAhsVT0phem5jD+m4q3uAF//Uc=
+github.com/ctx42/ring v0.8.0 h1:pH6IXU9NNZeJcMgY3Zn5T1H4QwQJ2MQKTh/3wrMiQhU=
+github.com/ctx42/ring v0.8.0/go.mod h1:ILFh9X0/YdsISY7pwz5DYuH0GbGflXP8rTc5rgtrWus=
 github.com/ctx42/testing v0.56.0 h1:+yZwRy+5JQb+14YtRTGJxWbAMAP9qlU9pMa8TPqgdzE=
 github.com/ctx42/testing v0.56.0/go.mod h1:wRBqNRtlxDZnXIjgCX3zr05Acl6JC1D6cSBN2IpaMIs=
+github.com/ctx42/testkit v0.15.0 h1:2FmWJT6ispUjAnJF5dlqin+VgZBAAIk9t4m02dtSGbE=
+github.com/ctx42/testkit v0.15.0/go.mod h1:CQBEevrKzPQlhoSXnhA1hFBjmDr4joLmY8sY4ml/DrY=
 github.com/ctx42/xdef v0.9.0 h1:bXHhghQ4QPpC0wD1ChDsZA/jm22X1wE4RDxpLsxtqy4=
 github.com/ctx42/xdef v0.9.0/go.mod h1:KY52keTViC/5i/nI25eRNBtYifhRqqyLs7gvIVbbaZ8=
 github.com/distribution/reference v0.6.0 h1:0IXCQ5g4/QMHHkarYzh5l+u8T3t73zM5QvfrDyIgxBk=
