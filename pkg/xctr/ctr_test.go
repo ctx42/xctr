@@ -24,6 +24,7 @@ import (
 	"github.com/ctx42/testkit/pkg/oskit"
 	"github.com/ctx42/testkit/pkg/randkit"
 	"github.com/ctx42/xdef/pkg/xdef"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 	tc "github.com/testcontainers/testcontainers-go"
@@ -2156,6 +2157,37 @@ func Test_CTR_Start(t *testing.T) {
 
 		// --- Then ---
 		assert.ErrorContain(t, "start container", err)
+
+		cli := xctrtest.NewClient(t)
+		label := LabTestCtrName + "=" + t.Name()
+		opts := client.ContainerListOptions{
+			All:     true,
+			Filters: make(client.Filters).Add("label", label),
+		}
+		lst := must.Value(cli.ContainerList(ctx, opts))
+		for _, itm := range lst.Items {
+			ctrGone(t, itm.ID)
+		}
+	})
+
+	t.Run("error - bind terminates container", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		req := xctrtest.ImageReq()
+		req.WaitingFor = nil
+		req.HostConfigModifier = func(hc *container.HostConfig) {
+			hc.AutoRemove = true
+			hc.NetworkMode = "none"
+		}
+		ctr := NewCTR(t.Name(), req)
+
+		// --- When ---
+		err := ctr.Start(ctx, nil)
+
+		// --- Then ---
+		assert.ErrorContain(t, "mapped port 80/tcp", err)
+		assert.Nil(t, ctr.dc)
+		assert.NoError(t, ctr.Cleanup(ctx))
 
 		cli := xctrtest.NewClient(t)
 		label := LabTestCtrName + "=" + t.Name()

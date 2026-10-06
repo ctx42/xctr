@@ -777,14 +777,20 @@ func (ctr *CTR) startAndBind(ctx context.Context) error {
 		err = fmt.Errorf("start: %w", err)
 		return errors.Join(err, tc.TerminateContainer(started))
 	}
-	ctr.RegisterCleanup(ctr.Terminate)
 	dc, ok := started.(*tc.DockerContainer)
 	if !ok {
 		_ = started.Terminate(ctx)
 		return errors.New("not *tc.DockerContainer instance")
 	}
 	ctr.dc = dc
-	return ctr.bindStarted(ctx)
+	if err = ctr.bindStarted(ctx); err != nil {
+		// Without its connection config the container is unusable; do not
+		// leave it running behind an error.
+		ctr.dc = nil
+		return errors.Join(err, tc.TerminateContainer(dc))
+	}
+	ctr.RegisterCleanup(ctr.Terminate)
+	return nil
 }
 
 // bindStarted records runtime identity and host/guest connection config after
