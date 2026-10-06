@@ -115,14 +115,21 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+// redisMx makes the get-or-start in SharedRedis safe for parallel tests.
+var redisMx sync.Mutex
+
 // SharedRedis starts Redis on first use; later calls get the same one.
 func SharedRedis(t *testing.T) *Redis {
 	t.Helper()
+	redisMx.Lock()
+	defer redisMx.Unlock()
 	if ctr := xctr.OnceGet("redis"); ctr != nil {
 		return ctr.(*Redis)
 	}
+	ctx := context.Background()
 	r := NewRedis("redis")
-	if err := r.Start(context.Background(), os.Environ()); err != nil {
+	if err := r.Start(ctx, os.Environ()); err != nil {
+		_ = r.Cleanup(ctx) // A failed start may leave a container behind.
 		t.Fatal(err)
 	}
 	xctr.OnceAdd(r)
