@@ -462,8 +462,9 @@ func (ctr *CTR) ContainerIP(ctx context.Context) (string, error) {
 }
 
 // GatewayIP returns the gateway IP of the network connected to the container
-// whose name sorts first. Returns [ErrNoNetwork] when no network is connected
-// and [ErrNotStarted] when the container is not running.
+// whose name sorts first. Returns [ErrNoNetwork] when no network is connected,
+// [ErrNotStarted] when the container is not running, and an error when that
+// network has no gateway.
 func (ctr *CTR) GatewayIP(ctx context.Context) (string, error) {
 	if ctr.dc == nil {
 		return "", ErrNotStarted
@@ -477,7 +478,11 @@ func (ctr *CTR) GatewayIP(ctx context.Context) (string, error) {
 		return "", ErrNoNetwork
 	}
 	first := slices.Min(slices.Collect(maps.Keys(nets)))
-	return nets[first].Gateway.String(), nil
+	gw := nets[first].Gateway
+	if !gw.IsValid() {
+		return "", fmt.Errorf("gateway ip: network %s has no gateway", first)
+	}
+	return gw.String(), nil
 }
 
 // Pause pauses running container.

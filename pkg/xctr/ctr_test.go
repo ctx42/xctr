@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1341,7 +1342,7 @@ func Test_CTR_GatewayIP(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.NotEmpty(t, have)
+		assert.True(t, must.Value(netip.ParseAddr(have)).IsValid())
 	})
 
 	t.Run("multiple networks", func(t *testing.T) {
@@ -1374,6 +1375,30 @@ func Test_CTR_GatewayIP(t *testing.T) {
 
 		// --- Then ---
 		assert.Equal(t, slices.Repeat([]string{want}, 20), have)
+	})
+
+	t.Run("error - network without gateway", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		req := xctrtest.ImageReq()
+		req.ExposedPorts = nil
+		req.WaitingFor = nil
+		req.HostConfigModifier = func(hc *container.HostConfig) {
+			hc.AutoRemove = true
+			hc.NetworkMode = "none"
+		}
+		ctr := NewCTR("echo", req)
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		have, err := ctr.GatewayIP(ctx)
+
+		// --- Then ---
+		assert.ErrorEqual(t, "gateway ip: network none has no gateway", err)
+		assert.Empty(t, have)
 	})
 
 	t.Run("error - container not running", func(t *testing.T) {
