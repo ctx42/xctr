@@ -1927,6 +1927,24 @@ func Test_prepareRequest(t *testing.T) {
 		assert.Type(t, &lgr, have.LogConsumerCfg.Consumers[0])
 	})
 
+	t.Run("logger gets container ID after create", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.ImageReq()
+		lc := NewLogger(false)
+		meta := buildMeta(nil, "echo", scmInfo{})
+
+		// --- When ---
+		have := prepareRequest(req, meta, nil, lc)
+
+		// --- Then ---
+		assert.Len(t, 1, have.LifecycleHooks)
+		assert.Len(t, 1, have.LifecycleHooks[0].PostCreates)
+
+		hook := have.LifecycleHooks[0].PostCreates[0]
+		assert.NoError(t, hook(t.Context(), &tc.DockerContainer{ID: "abc"}))
+		assert.Equal(t, "abc", lc.cid)
+	})
+
 	t.Run("no log consumer by default", func(t *testing.T) {
 		// --- Given ---
 		req := xctrtest.ImageReq()
@@ -2197,6 +2215,7 @@ func Test_CTR_Start(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Equal(t, "Listening on port 80.\n", lc.Print())
+		assert.Equal(t, ctr.ID(), lc.cid)
 	})
 
 	t.Run("override entrypoint", func(t *testing.T) {

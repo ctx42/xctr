@@ -760,6 +760,29 @@ func prepareRequest(
 		}
 	}
 
+	// Loggers prefix printed lines with the container ID, known only once
+	// the container is created.
+	var lgrs []*Logger
+	if req.LogConsumerCfg != nil {
+		for _, lc := range req.LogConsumerCfg.Consumers {
+			if lgr, ok := lc.(*Logger); ok {
+				lgrs = append(lgrs, lgr)
+			}
+		}
+	}
+	if len(lgrs) > 0 {
+		hook := func(_ context.Context, ctr tc.Container) error {
+			for _, lgr := range lgrs {
+				lgr.SetCID(ctr.GetContainerID())
+			}
+			return nil
+		}
+		hooks := tc.ContainerLifecycleHooks{
+			PostCreates: []tc.ContainerHook{hook},
+		}
+		req.LifecycleHooks = append(slices.Clone(req.LifecycleHooks), hooks)
+	}
+
 	return req
 }
 
