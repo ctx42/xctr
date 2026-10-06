@@ -724,6 +724,27 @@ func Test_CTR_ExecContent(t *testing.T) {
 		assert.Empty(t, have.EOut)
 	})
 
+	t.Run("unique script in tmp", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR("echo", xctrtest.ImageReq())
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		content := []byte("#!/bin/sh\necho $0\n")
+		first := ctr.ExecContent(ctx, content).SOut
+
+		// --- When ---
+		have := ctr.ExecContent(ctx, content)
+
+		// --- Then ---
+		assert.NoError(t, have.Unwrap())
+		assert.Regexp(t, `^/tmp/xctr-[A-Z2-7]{26}\.sh\n$`, have.SOut)
+		assert.NotEqual(t, first, have.SOut)
+	})
+
 	t.Run("exit code 1", func(t *testing.T) {
 		// --- Given ---
 		ctx := t.Context()
@@ -759,7 +780,8 @@ func Test_CTR_ExecContent(t *testing.T) {
 		have := ctr.ExecContent(ctx, content)
 
 		// --- Then ---
-		assert.ErrorRegexp(t, "^copy to /tmp/file_[0-9]+\\.sh: ", have.Err())
+		wRx := "^copy to /tmp/xctr-[A-Z2-7]{26}\\.sh: "
+		assert.ErrorRegexp(t, wRx, have.Err())
 		assert.Equal(t, 0, have.ExitCode)
 		assert.Empty(t, have.SOut)
 		assert.Empty(t, have.EOut)

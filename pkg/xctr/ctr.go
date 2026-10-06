@@ -6,17 +6,17 @@ package xctr
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"os"
-	"path/filepath"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/ctx42/gitaid/pkg/gitaid"
@@ -305,14 +305,15 @@ func (ctr *CTR) Exec(ctx context.Context, cmd ...string) ExecResult {
 	}
 }
 
-// ExecContent uploads content as a file to the running container and executes
-// it. The container must not be a read-only container.
+// ExecContent uploads content as a uniquely named file to the running
+// container's /tmp directory and executes it. The file stays in the container.
+// The container must not be a read-only container.
 func (ctr *CTR) ExecContent(ctx context.Context, content []byte) ExecResult {
 	if ctr.readOnly {
 		return ExecResult{ExecError: ErrReadOnly}
 	}
-	name := fmt.Sprintf("file_%d.sh", time.Now().UnixNano())
-	dst := filepath.Join("/tmp", name)
+	// The container path uses forward slashes on every host OS.
+	dst := path.Join("/tmp", "xctr-"+rand.Text()+".sh")
 	if err := ctr.CopyTo(ctx, bytes.NewReader(content), dst, 0755); err != nil {
 		return ExecResult{ExecError: err}
 	}

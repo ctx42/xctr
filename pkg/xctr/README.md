@@ -103,7 +103,7 @@ func Test_Example(t *testing.T) {
 
 Outside a test — or when you need full control over the lifecycle — call
 `Start` and `Cleanup` directly. `Cleanup` terminates the container and
-removes the temp files `CreateTemp` and `ExecContent` created:
+removes the temp files `CreateTemp` created:
 
 ```go
 ctx := context.Background()
