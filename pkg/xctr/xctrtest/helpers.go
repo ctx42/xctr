@@ -102,12 +102,17 @@ type Container interface {
 
 // CanStart starts a container and registers automatic cleanup after the test
 // ends, also when starting fails, since a container may be left running by a
-// failed start. On error, it marks the test failed and returns. When the
-// container also describes itself, its description is logged.
+// failed start. On error, it marks the test failed and returns; a failed
+// cleanup marks the test failed too. When the container also describes
+// itself, its description is logged.
 func CanStart(t tester.T, env []string, ctr Container) {
 	t.Helper()
 
-	t.Cleanup(func() { _ = ctr.Cleanup(context.Background()) })
+	t.Cleanup(func() {
+		if err := ctr.Cleanup(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
 	if err := ctr.Start(t.Context(), env); err != nil {
 		t.Error(err)
 		return

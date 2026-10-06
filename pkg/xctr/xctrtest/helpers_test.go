@@ -135,6 +135,12 @@ type failCtr struct{}
 func (failCtr) Start(context.Context, []string) error { return errTest }
 func (failCtr) Cleanup(context.Context) error         { return nil }
 
+// failCleanupCtr is a [Container] whose Cleanup always fails.
+type failCleanupCtr struct{}
+
+func (failCleanupCtr) Start(context.Context, []string) error { return nil }
+func (failCleanupCtr) Cleanup(context.Context) error         { return errTest }
+
 func Test_CanStart(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		// --- Given ---
@@ -169,6 +175,22 @@ func Test_CanStart(t *testing.T) {
 		CanStart(tspy, nil, failCtr{})
 
 		// --- Then ---
+		assert.True(t, tspy.Failed())
+	})
+
+	t.Run("error - cleanup fails", func(t *testing.T) {
+		// --- Given ---
+		tspy := tester.New(t)
+		tspy.ExpectError()
+		tspy.ExpectCleanups(1)
+		tspy.ExpectLogEqual("test error")
+		tspy.Close()
+
+		// --- When ---
+		CanStart(tspy, nil, failCleanupCtr{})
+
+		// --- Then ---
+		tspy.Finish()
 		assert.True(t, tspy.Failed())
 	})
 }
