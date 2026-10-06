@@ -5,11 +5,36 @@ package xctr
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ctx42/testing/pkg/assert"
 	"github.com/ctx42/testing/pkg/must"
 )
+
+func Test_CleanupTrait_RegisterCleanup(t *testing.T) {
+	t.Run("concurrent registration", func(t *testing.T) {
+		// --- Given ---
+		cln := &CleanupTrait{}
+		var calls atomic.Int32
+		fn := func(context.Context) error {
+			calls.Add(1)
+			return nil
+		}
+
+		// --- When ---
+		var wg sync.WaitGroup
+		for range 10 {
+			wg.Go(func() { cln.RegisterCleanup(fn) })
+		}
+		wg.Wait()
+
+		// --- Then ---
+		assert.NoError(t, cln.Cleanup(t.Context()))
+		assert.Equal(t, int32(10), calls.Load())
+	})
+}
 
 func Test_CleanupTrait_Cleanup(t *testing.T) {
 	t.Run("no cleanups registered", func(t *testing.T) {
@@ -83,6 +108,30 @@ func Test_CleanupTrait_Cleanup(t *testing.T) {
 		assert.ErrorIs(t, errTestOther, err)
 
 		assert.Equal(t, []string{"3", "2", "1", "0"}, order)
+	})
+
+	t.Run("cleanup registers another cleanup", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		cln := &CleanupTrait{}
+
+		var called bool
+		cln.RegisterCleanup(func(context.Context) error {
+			cln.RegisterCleanup(func(context.Context) error {
+				called = true
+				return nil
+			})
+			return nil
+		})
+
+		// --- When ---
+		err := cln.Cleanup(ctx)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.False(t, called)
+		assert.NoError(t, cln.Cleanup(ctx))
+		assert.True(t, called)
 	})
 
 	t.Run("registered cleanups run only once", func(t *testing.T) {

@@ -1522,6 +1522,26 @@ func Test_CTR_Terminate(t *testing.T) {
 		assert.Nil(t, ctr.dc)
 	})
 
+	t.Run("closes the exec client", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR("echo", xctrtest.ImageReq())
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+		assert.NoError(t, ctr.Exec(ctx, "true").Err())
+
+		// --- When ---
+		err := ctr.Terminate(ctx)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Nil(t, ctr.cli)
+		assert.NoError(t, ctr.Start(ctx, nil))
+		assert.NoError(t, ctr.Exec(ctx, "true").Err())
+	})
+
 	t.Run("error - not started", func(t *testing.T) {
 		// --- Given ---
 		ctx := t.Context()

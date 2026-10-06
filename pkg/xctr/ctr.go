@@ -130,7 +130,7 @@ type CTR struct {
 	// Used to execute commands on started container.
 	cli *client.Client
 
-	// Guards the lazy initialization of cli against concurrent Exec calls.
+	// Guards cli against concurrent Exec and Terminate calls.
 	cliMx sync.Mutex
 
 	// Custom container log consumer.
@@ -239,13 +239,13 @@ func (ctr *CTR) Exec(ctx context.Context, cmd ...string) ExecResult {
 
 	ctr.cliMx.Lock()
 	if ctr.cli == nil {
-		cli, err := newDockerClient(ctx)
-		if err != nil {
+		var err error
+		if ctr.cli, err = newDockerClient(ctx); err != nil {
 			ctr.cliMx.Unlock()
 			return ExecResult{ExecError: fmt.Errorf("docker client: %w", err)}
 		}
-		ctr.cli = cli
 	}
+	cli := ctr.cli
 	ctr.cliMx.Unlock()
 
 	// Prepare exec.
@@ -254,14 +254,14 @@ func (ctr *CTR) Exec(ctx context.Context, cmd ...string) ExecResult {
 		AttachStderr: true,
 		Cmd:          cmd,
 	}
-	rspCrt, err := ctr.cli.ExecCreate(ctx, ctr.ID(), cfgCrt)
+	rspCrt, err := cli.ExecCreate(ctx, ctr.ID(), cfgCrt)
 	if err != nil {
 		return ExecResult{ExecError: fmt.Errorf("exec create: %w", err)}
 	}
 
 	// Run command with stdout and stderr attached.
 	cfgAtt := client.ExecAttachOptions{}
-	rspAtt, err := ctr.cli.ExecAttach(ctx, rspCrt.ID, cfgAtt)
+	rspAtt, err := cli.ExecAttach(ctx, rspCrt.ID, cfgAtt)
 	if err != nil {
 		return ExecResult{ExecError: fmt.Errorf("exec attach: %w", err)}
 	}
@@ -293,7 +293,7 @@ func (ctr *CTR) Exec(ctx context.Context, cmd ...string) ExecResult {
 
 	// Get the exit code.
 	cfgIns := client.ExecInspectOptions{}
-	irsp, err := ctr.cli.ExecInspect(ctx, rspCrt.ID, cfgIns)
+	irsp, err := cli.ExecInspect(ctx, rspCrt.ID, cfgIns)
 	if err != nil {
 		return ExecResult{ExecError: fmt.Errorf("exec inspect: %w", err)}
 	}
@@ -525,9 +525,12 @@ func (ctr *CTR) Terminate(ctx context.Context) (err error) {
 		return ErrNotStarted
 	}
 	tcc := ctr.dc
+	ctr.cliMx.Lock()
 	if ctr.cli != nil {
 		_ = ctr.cli.Close()
+		ctr.cli = nil
 	}
+	ctr.cliMx.Unlock()
 
 	// Mark terminated only after the underlying terminate succeeds (or fails
 	// with an ignorable error), so a real failure leaves the container bound
