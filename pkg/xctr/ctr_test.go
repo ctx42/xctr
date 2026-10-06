@@ -130,24 +130,88 @@ func Test_WithCTRImgRm(t *testing.T) {
 }
 
 func Test_NewCTR(t *testing.T) {
-	// --- Given ---
-	req := tc.GenericContainerRequest{
-		ContainerRequest: tc.ContainerRequest{Image: xctrtest.EchoServerRef},
-	}
+	t.Run("success", func(t *testing.T) {
+		// --- Given ---
+		req := tc.GenericContainerRequest{
+			ContainerRequest: tc.ContainerRequest{
+				Image: xctrtest.EchoServerRef,
+			},
+		}
 
-	// --- When ---
-	ctr := NewCTR("echo", req)
+		// --- When ---
+		ctr := NewCTR("echo", req)
 
-	// --- Then ---
-	assert.Equal(t, "", ctr.id)
-	assert.Equal(t, "echo", ctr.name)
-	assert.Equal(t, "", ctr.reference)
-	assert.Equal(t, req, ctr.req)
-	assert.Nil(t, ctr.dc)
-	assert.Equal(t, xctrtest.EchoServerRef, ctr.req.Image)
-	assert.False(t, ctr.removeImage)
-	assert.Nil(t, ctr.cfgHost)
-	assert.Nil(t, ctr.cfgGuest)
+		// --- Then ---
+		assert.Equal(t, "", ctr.id)
+		assert.Equal(t, "echo", ctr.name)
+		assert.Equal(t, "", ctr.reference)
+		assert.Equal(t, req, ctr.req)
+		assert.Nil(t, ctr.dc)
+		assert.Equal(t, xctrtest.EchoServerRef, ctr.req.Image)
+		assert.False(t, ctr.removeImage)
+		assert.Nil(t, ctr.cfgHost)
+		assert.Nil(t, ctr.cfgGuest)
+	})
+
+	t.Run("request is not shared", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.ImageReq()
+		req.Labels = map[string]string{"lab": "val"}
+		req.Env = map[string]string{"ENV": "val"}
+
+		// --- When ---
+		ctr := NewCTR("echo", req)
+
+		// --- Then ---
+		assert.NoError(t, ctr.SetLabel("other", "val"))
+		assert.NoError(t, ctr.Setenv("OTHER", "val"))
+		assert.NoError(t, ctr.ExposePort("81/tcp"))
+		assert.Equal(t, map[string]string{"lab": "val"}, req.Labels)
+		assert.Equal(t, map[string]string{"ENV": "val"}, req.Env)
+		assert.Equal(t, []string{"80/tcp"}, req.ExposedPorts)
+	})
+}
+
+func Test_cloneReq(t *testing.T) {
+	t.Run("copies maps and slices", func(t *testing.T) {
+		// --- Given ---
+		req := tc.GenericContainerRequest{
+			ContainerRequest: tc.ContainerRequest{
+				Labels:       map[string]string{"lab": "val"},
+				Env:          map[string]string{"ENV": "val"},
+				ExposedPorts: []string{"80/tcp"},
+				Files:        []tc.ContainerFile{{HostFilePath: "a"}},
+				FromDockerfile: tc.FromDockerfile{
+					BuildArgs: map[string]*string{"ARG": new("val")},
+				},
+			},
+		}
+
+		// --- When ---
+		have := cloneReq(req)
+
+		// --- Then ---
+		assert.Equal(t, req, have)
+
+		have.Labels["lab"] = "changed"
+		have.Env["ENV"] = "changed"
+		have.BuildArgs["ARG"] = new("changed")
+		have.ExposedPorts[0] = "81/tcp"
+		have.Files[0].HostFilePath = "b"
+		assert.Equal(t, "val", req.Labels["lab"])
+		assert.Equal(t, "val", req.Env["ENV"])
+		assert.Equal(t, "val", *req.BuildArgs["ARG"])
+		assert.Equal(t, "80/tcp", req.ExposedPorts[0])
+		assert.Equal(t, "a", req.Files[0].HostFilePath)
+	})
+
+	t.Run("nil maps and slices", func(t *testing.T) {
+		// --- When ---
+		have := cloneReq(tc.GenericContainerRequest{})
+
+		// --- Then ---
+		assert.Equal(t, tc.GenericContainerRequest{}, have)
+	})
 }
 
 func Test_CTR_Cleanup(t *testing.T) {

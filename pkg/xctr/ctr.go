@@ -129,13 +129,26 @@ var (
 	_ Descriptor = (*CTR)(nil)
 )
 
-// NewCTR returns an instance of [CTR] for the given request.
+// NewCTR returns an instance of [CTR] for the given request. The request's
+// labels, environment, build arguments, exposed ports, and files are copied,
+// so the same request may be used to create many containers.
 func NewCTR(name string, req tc.GenericContainerRequest, opts ...Option) *CTR {
-	ctr := &CTR{name: name, req: req}
+	ctr := &CTR{name: name, req: cloneReq(req)}
 	for _, opt := range opts {
 		opt(ctr)
 	}
 	return ctr
+}
+
+// cloneReq returns a copy of the request whose maps and slices that [CTR]
+// writes to are not shared with the original.
+func cloneReq(req tc.GenericContainerRequest) tc.GenericContainerRequest {
+	req.Labels = maps.Clone(req.Labels)
+	req.Env = maps.Clone(req.Env)
+	req.BuildArgs = maps.Clone(req.BuildArgs)
+	req.ExposedPorts = slices.Clone(req.ExposedPorts)
+	req.Files = slices.Clone(req.Files)
+	return req
 }
 
 func (ctr *CTR) ID() string        { return ctr.id }
