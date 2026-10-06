@@ -356,3 +356,44 @@ func Test_DescribeFiles(t *testing.T) {
 		assert.Equal(t, want, have)
 	})
 }
+
+func Test_stripUserinfo_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		raw  string
+		want string
+	}{
+		{
+			"user and token",
+			"https://ci-token:secret@example.com/org/repo.git",
+			"https://example.com/org/repo.git",
+		},
+		{
+			"token as user",
+			"https://secret@example.com/org/repo.git",
+			"https://example.com/org/repo.git",
+		},
+		{
+			"no userinfo",
+			"https://example.com/org/repo.git",
+			"https://example.com/org/repo.git",
+		},
+		{
+			"scp-like",
+			"git@example.com:org/repo.git",
+			"git@example.com:org/repo.git",
+		},
+		{"not a URL", "unknown", "unknown"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := stripUserinfo(tc.raw)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}

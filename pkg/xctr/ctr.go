@@ -656,7 +656,8 @@ type scmInfo struct {
 }
 
 // scmFromGit resolves origin, describe, and latest hash from the checkout.
-// Missing values fall back to [xdef] placeholders.
+// Credentials in the origin URL are dropped. Missing values fall back to
+// [xdef] placeholders.
 func scmFromGit(ctx context.Context) scmInfo {
 	scm := scmInfo{
 		repo: xdef.PhUnknown,
@@ -664,7 +665,7 @@ func scmFromGit(ctx context.Context) scmInfo {
 		hash: xdef.PhHash,
 	}
 	if val, _ := gitaid.ProjectOrigin(ctx, ""); val != "" {
-		scm.repo = val
+		scm.repo = stripUserinfo(val)
 	}
 	if val, _ := gitaid.Describe(ctx, ""); val != "" {
 		scm.rev = val

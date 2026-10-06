@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/distribution/reference"
@@ -160,4 +161,16 @@ func DescribeFiles(fls []tc.ContainerFile) []string {
 		lns = append(lns, fmt.Sprintf("\t%s -> %s", hostPth, ctrPth))
 	}
 	return lns
+}
+
+// stripUserinfo returns the URL without its user name and password, which may
+// carry an access token. A value that does not parse as a URL, such as the
+// scp-like "git@example.com:org/repo.git", is returned unchanged.
+func stripUserinfo(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	u.User = nil
+	return u.String()
 }
