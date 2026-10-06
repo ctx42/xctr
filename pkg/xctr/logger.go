@@ -22,6 +22,7 @@ type Logger struct {
 	cid     string                                           // Container ID.
 	lines   []string                                         // Log lines.
 	printer func(format string, a ...any) (n int, err error) // Log printer.
+	drop    bool                                             // Print only.
 	mx      sync.Mutex                                       // Guards fields.
 }
 
@@ -57,7 +58,9 @@ func (log *Logger) SetCID(cid string) *Logger {
 func (log *Logger) Accept(msg tc.Log) {
 	log.mx.Lock()
 	defer log.mx.Unlock()
-	log.lines = append(log.lines, string(msg.Content))
+	if !log.drop {
+		log.lines = append(log.lines, string(msg.Content))
+	}
 	if log.printer != nil {
 		_, _ = log.printer("\t%s |> %s", ShortID(log.cid), string(msg.Content))
 	}

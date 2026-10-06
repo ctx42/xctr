@@ -772,7 +772,10 @@ func prepareRequest(
 	if req.LogConsumerCfg == nil {
 		lc := log
 		if lc == nil && ring.EnvGet(env, EnvCTRLog) == "true" {
-			lc = NewLogger(true)
+			// Nothing can read the lines of this logger; only print them.
+			lgr := NewLogger(true)
+			lgr.drop = true
+			lc = lgr
 		}
 		if lc != nil {
 			req.LogConsumerCfg = &tc.LogConsumerConfig{

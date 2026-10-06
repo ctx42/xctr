@@ -84,6 +84,27 @@ func Test_Logger_Accept(t *testing.T) {
 		assert.Equal(t, "abc", log.lines[0])
 		assert.Equal(t, "def", log.lines[1])
 	})
+
+	t.Run("printing without keeping lines", func(t *testing.T) {
+		// --- Given ---
+		var lines []string
+		printer := func(format string, a ...any) (n int, err error) {
+			msg := fmt.Sprintf(format, a...)
+			lines = append(lines, msg)
+			return len(msg), nil
+		}
+
+		log := NewLogger(true)
+		log.printer = printer
+		log.drop = true
+
+		// --- When ---
+		log.Accept(tc.Log{Content: []byte("abc")})
+
+		// --- Then ---
+		assert.Len(t, 0, log.lines)
+		assert.Equal(t, []string{"\t |> abc"}, lines)
+	})
 }
 
 //nolint:forbidigo

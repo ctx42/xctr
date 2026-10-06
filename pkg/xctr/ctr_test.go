@@ -1980,6 +1980,7 @@ func Test_prepareRequest(t *testing.T) {
 		assert.Len(t, 1, have.LogConsumerCfg.Consumers)
 		var lgr *Logger
 		assert.Type(t, &lgr, have.LogConsumerCfg.Consumers[0])
+		assert.True(t, lgr.drop)
 	})
 
 	t.Run("logger gets container ID after create", func(t *testing.T) {
