@@ -646,7 +646,7 @@ func Test_CTR_Exec(t *testing.T) {
 
 		orig := newDockerClient
 		t.Cleanup(func() { newDockerClient = orig })
-		newDockerClient = func() (*client.Client, error) {
+		newDockerClient = func(context.Context) (*client.Client, error) {
 			return nil, errors.New("unable to parse docker host")
 		}
 

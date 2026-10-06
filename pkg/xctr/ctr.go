@@ -49,10 +49,16 @@ func SetEnvCTREntrypoint(env []string, cmd ...string) []string {
 	return ring.EnvSet(env, EnvCTREntrypoint, strings.Join(cmd, " "))
 }
 
-// newDockerClient creates a Docker API client from the process environment.
-// Tests may replace it to force client-creation failures.
-var newDockerClient = func() (*client.Client, error) {
-	return client.New(client.FromEnv)
+// newDockerClient creates a Docker API client for the same Docker host
+// testcontainers uses to start containers: the Docker context, the
+// testcontainers properties file, or DOCKER_HOST. Tests may replace it to
+// force client-creation failures.
+var newDockerClient = func(ctx context.Context) (*client.Client, error) {
+	cli, err := tc.NewDockerClientWithOpts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cli.Client, nil
 }
 
 // Option is an option for [NewCTR].
@@ -230,7 +236,7 @@ func (ctr *CTR) Exec(ctx context.Context, cmd ...string) ExecResult {
 
 	ctr.cliMx.Lock()
 	if ctr.cli == nil {
-		cli, err := newDockerClient()
+		cli, err := newDockerClient(ctx)
 		if err != nil {
 			ctr.cliMx.Unlock()
 			return ExecResult{ExecError: fmt.Errorf("docker client: %w", err)}
