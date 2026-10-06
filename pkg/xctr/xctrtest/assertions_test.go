@@ -77,4 +77,20 @@ func Test_AssertBuildArg(t *testing.T) {
 		// --- Then ---
 		assert.False(t, have)
 	})
+
+	t.Run("nil value", func(t *testing.T) {
+		// --- Given ---
+		tspy := tester.New(t)
+		tspy.ExpectError()
+		tspy.ExpectLogEqual("expected non-nil value")
+		tspy.Close()
+
+		ba := map[string]*string{"KEY0": nil}
+
+		// --- When ---
+		have := AssertBuildArg(tspy, "KEY0", "VAL0", ba)
+
+		// --- Then ---
+		assert.False(t, have)
+	})
 }
