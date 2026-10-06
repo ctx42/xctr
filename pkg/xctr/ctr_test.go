@@ -1928,7 +1928,7 @@ func Test_CTR_Start(t *testing.T) {
 			xdef.EnvBldDate:    new("2000-01-02T03:04:05Z"),
 			xdef.EnvBldImgBase: new(xctrtest.EchoServerRef),
 		}
-		assert.Equal(t, wArgs, ctr.Request().BuildArgs)
+		assert.Equal(t, wArgs, ctr.runReq.BuildArgs)
 
 		hCtr := must.Value(dkrkit.NewT(t).CtrPs().FindByID(ctr.ID()))
 		wEnv := map[string]string{
@@ -2098,11 +2098,33 @@ func Test_CTR_Start(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Nil(t, ctr.Request().WaitingFor)
+		assert.Nil(t, ctr.runReq.WaitingFor)
 		wEP := []string{"tini", "--", "tail", "-f", "/dev/null"}
-		assert.Equal(t, wEP, ctr.Request().Entrypoint)
-		assert.Equal(t, []string{"80/tcp"}, ctr.Request().ExposedPorts)
+		assert.Equal(t, wEP, ctr.runReq.Entrypoint)
+		assert.Equal(t, []string{"80/tcp"}, ctr.runReq.ExposedPorts)
 		assert.Equal(t, ctr.dc.GetContainerID(), ctr.ID())
+		assert.NotNil(t, ctr.Request().WaitingFor)
+		assert.Nil(t, ctr.Request().Entrypoint)
+	})
+
+	t.Run("restart from Dockerfile", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR(t.Name(), xctrtest.DockerfileReq())
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+		assert.NoError(t, ctr.Start(ctx, SetEnvCTREntrypoint(nil)))
+		assert.NoError(t, ctr.Terminate(ctx))
+
+		// --- When ---
+		err := ctr.Start(ctx, nil)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.True(t, ctr.IsRunning())
+		assert.NotNil(t, ctr.runReq.WaitingFor)
+		assert.Nil(t, ctr.runReq.Entrypoint)
 	})
 
 	t.Run("error - wait strategy terminates container", func(t *testing.T) {

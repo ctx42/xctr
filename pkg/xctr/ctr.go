@@ -86,8 +86,12 @@ type CTR struct {
 	// Examples: "repo/name:tag", "ealen/echo-server:0.8.12".
 	reference string
 
-	// Container request.
+	// Container request as configured by the caller.
 	req tc.GenericContainerRequest
+
+	// Request the last [CTR.Start] passed to testcontainers: req with
+	// provenance labels and env, build arguments, and env switches applied.
+	runReq tc.GenericContainerRequest
 
 	// Started container. Set by [CTR.Start] and set to nil by
 	// [CTR.Terminate].
@@ -733,19 +737,27 @@ func prepareRequest(
 	return req
 }
 
+// Start prepares a copy of the configured request, so it may be called again
+// after [CTR.Terminate]; [CTR.Request] keeps returning the configured request.
 func (ctr *CTR) Start(ctx context.Context, env []string) error {
 	if ctr.dc != nil {
 		return ErrRunning
 	}
+	// A previous build read the context archive to its end.
+	if arc := ctr.req.ContextArchive; arc != nil {
+		if _, err := arc.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("rewind context archive: %w", err)
+		}
+	}
 
 	meta := buildMeta(env, ctr.name, scmFromGit(ctx))
-	ctr.req = prepareRequest(ctr.req, meta, env, ctr.log)
+	ctr.runReq = prepareRequest(cloneReq(ctr.req), meta, env, ctr.log)
 	return ctr.startAndBind(ctx)
 }
 
 // startAndBind runs GenericContainer and binds the result onto CTR.
 func (ctr *CTR) startAndBind(ctx context.Context) error {
-	started, err := tc.GenericContainer(ctx, ctr.req)
+	started, err := tc.GenericContainer(ctx, ctr.runReq)
 	if err != nil {
 		// A container that was created but failed to start is still returned
 		// and must be terminated, or it keeps running.
@@ -765,7 +777,7 @@ func (ctr *CTR) startAndBind(ctx context.Context) error {
 // bindStarted records runtime identity and host/guest connection config after
 // the container has been created.
 func (ctr *CTR) bindStarted(ctx context.Context) error {
-	if !ctr.req.Started {
+	if !ctr.runReq.Started {
 		return nil
 	}
 	ctr.cfgHost = make(map[string]string)
@@ -773,7 +785,7 @@ func (ctr *CTR) bindStarted(ctx context.Context) error {
 	ctr.id = ctr.dc.GetContainerID()
 	ctr.reference = ctr.dc.Image
 
-	for i, ep := range ctr.req.ExposedPorts {
+	for i, ep := range ctr.runReq.ExposedPorts {
 		if _, after, ok := strings.Cut(ep, ":"); ok {
 			ep = after
 		}
