@@ -69,6 +69,21 @@ func Test_ExecResult_Err(t *testing.T) {
 		assert.ErrorEqual(t, "exit code: 1", have)
 	})
 
+	t.Run("non-zero exit code with blank ErrBuf", func(t *testing.T) {
+		// --- Given ---
+		er := ExecResult{
+			ExitCode: 2,
+			EOut:     " \n",
+		}
+
+		// --- When ---
+		have := er.Err()
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrExitCode, have)
+		assert.ErrorEqual(t, "exit code: 2", have)
+	})
+
 	t.Run("zero exit code", func(t *testing.T) {
 		// --- Given ---
 		er := ExecResult{
