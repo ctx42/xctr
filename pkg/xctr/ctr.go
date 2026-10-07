@@ -837,9 +837,13 @@ func (ctr *CTR) startAndBind(ctx context.Context) error {
 	ctr.dc = dc
 	if err = ctr.bindStarted(ctx); err != nil {
 		// Without its connection config the container is unusable; do not
-		// leave it running behind an error.
-		ctr.dc = nil
-		return errors.Join(err, tc.TerminateContainer(dc))
+		// leave it running behind an error. A failed terminate is retried on
+		// cleanup.
+		if tErr := ctr.Terminate(ctx); tErr != nil {
+			ctr.RegisterCleanup(ctr.Terminate)
+			return errors.Join(err, tErr)
+		}
+		return err
 	}
 	ctr.RegisterCleanup(ctr.Terminate)
 	return nil

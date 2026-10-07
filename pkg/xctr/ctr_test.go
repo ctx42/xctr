@@ -2413,6 +2413,35 @@ func Test_CTR_Start(t *testing.T) {
 		}
 	})
 
+	t.Run("error - bind removes image", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		imgRef, imgID := dkrkit.NewT(t).Build(
+			dkrkit.WithBuildPth("xctrtest/data/simple/Dockerfile"),
+		)
+		req := tc.GenericContainerRequest{
+			Started: true,
+			ContainerRequest: tc.ContainerRequest{
+				Image:        imgRef,
+				ExposedPorts: []string{"80/tcp"},
+				HostConfigModifier: func(hc *container.HostConfig) {
+					hc.NetworkMode = "none"
+				},
+			},
+		}
+		ctr := NewCTR(t.Name(), req, WithCTRImgRm)
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		err := ctr.Start(ctx, nil)
+
+		// --- Then ---
+		assert.ErrorContain(t, "mapped port 80/tcp", err)
+		assert.Nil(t, dkrkit.NewT(t).ImgLs().FindByID(imgID))
+	})
+
 	t.Run("error - already started", func(t *testing.T) {
 		// --- Given ---
 		ctx := t.Context()
