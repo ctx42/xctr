@@ -155,21 +155,44 @@ func Test_NewCTR(t *testing.T) {
 		assert.Nil(t, ctr.cfgGuest)
 	})
 
-	t.Run("request is not shared", func(t *testing.T) {
+	t.Run("labels not shared", func(t *testing.T) {
 		// --- Given ---
 		req := xctrtest.ImageReq()
 		req.Labels = map[string]string{"lab": "val"}
-		req.Env = map[string]string{"ENV": "val"}
-
-		// --- When ---
 		ctr := NewCTR("echo", req)
 
+		// --- When ---
+		err := ctr.SetLabel("other", "val")
+
 		// --- Then ---
-		assert.NoError(t, ctr.SetLabel("other", "val"))
-		assert.NoError(t, ctr.Setenv("OTHER", "val"))
-		assert.NoError(t, ctr.ExposePort("81/tcp"))
+		assert.NoError(t, err)
 		assert.Equal(t, map[string]string{"lab": "val"}, req.Labels)
+	})
+
+	t.Run("env not shared", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.ImageReq()
+		req.Env = map[string]string{"ENV": "val"}
+		ctr := NewCTR("echo", req)
+
+		// --- When ---
+		err := ctr.Setenv("OTHER", "val")
+
+		// --- Then ---
+		assert.NoError(t, err)
 		assert.Equal(t, map[string]string{"ENV": "val"}, req.Env)
+	})
+
+	t.Run("exposed ports not shared", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.ImageReq()
+		ctr := NewCTR("echo", req)
+
+		// --- When ---
+		err := ctr.ExposePort("81/tcp")
+
+		// --- Then ---
+		assert.NoError(t, err)
 		assert.Equal(t, []string{"80/tcp"}, req.ExposedPorts)
 	})
 }
@@ -543,6 +566,26 @@ func Test_CTR_Exec(t *testing.T) {
 		assert.Equal(t, 0, have.ExitCode)
 		assert.Equal(t, t.Name(), have.SOut)
 		assert.Equal(t, "", have.EOut)
+	})
+
+	t.Run("after restart", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR("echo", xctrtest.ImageReq())
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+		assert.NoError(t, ctr.Exec(ctx, "true").Err())
+		assert.NoError(t, ctr.Terminate(ctx))
+		assert.NoError(t, ctr.Start(ctx, nil))
+
+		// --- When ---
+		have := ctr.Exec(ctx, "echo", "hi")
+
+		// --- Then ---
+		assert.NoError(t, have.Unwrap())
+		assert.Equal(t, "hi\n", have.SOut)
 	})
 
 	t.Run("success command exits code 1 prints to std err", func(t *testing.T) {
@@ -1584,8 +1627,6 @@ func Test_CTR_Terminate(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Nil(t, ctr.cli)
-		assert.NoError(t, ctr.Start(ctx, nil))
-		assert.NoError(t, ctr.Exec(ctx, "true").Err())
 	})
 
 	t.Run("error - not started", func(t *testing.T) {
@@ -2328,6 +2369,9 @@ func Test_CTR_Start(t *testing.T) {
 			hc.NetworkMode = "none"
 		}
 		ctr := NewCTR(t.Name(), req)
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
 
 		// --- When ---
 		err := ctr.Start(ctx, nil)
@@ -2335,7 +2379,6 @@ func Test_CTR_Start(t *testing.T) {
 		// --- Then ---
 		assert.ErrorContain(t, "mapped port 80/tcp", err)
 		assert.Nil(t, ctr.dc)
-		assert.NoError(t, ctr.Cleanup(ctx))
 
 		cli := xctrtest.NewClient(t)
 		label := LabTestCtrName + "=" + t.Name()
