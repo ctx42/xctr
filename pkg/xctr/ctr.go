@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"os"
 	"path"
 	"slices"
@@ -454,6 +455,47 @@ func (ctr *CTR) MappedPort(
 		return network.Port{}, fmt.Errorf("mapped port %s: %w", p, err)
 	}
 	return port, nil
+}
+
+// HostAddr returns the "host:port" address the host reaches the exposed
+// container port on, e.g. "localhost:32768" for "5432/tcp". A port without a
+// protocol is TCP. Returns [ErrNotStarted] when the container is not started
+// and [ErrNotExposed] when the port is not among the exposed ports.
+func (ctr *CTR) HostAddr(port string) (string, error) {
+	return ctr.addr(ctr.cfgHost, port)
+}
+
+// GuestAddr returns the "ip:port" address other containers reach the exposed
+// container port on, e.g. "172.17.0.3:5432" for "5432/tcp". It fails as
+// [CTR.HostAddr] does.
+func (ctr *CTR) GuestAddr(port string) (string, error) {
+	return ctr.addr(ctr.cfgGuest, port)
+}
+
+// addr returns the address of the exposed container port as recorded in cfg,
+// which is cfgHost or cfgGuest.
+func (ctr *CTR) addr(cfg map[string]string, port string) (string, error) {
+	if ctr.dc == nil || ctr.cfgGuest == nil {
+		return "", ErrNotStarted
+	}
+	want, err := network.ParsePort(port)
+	if err != nil {
+		return "", fmt.Errorf("address of %s: %w", port, err)
+	}
+	for key, val := range ctr.cfgGuest {
+		if !strings.HasPrefix(key, "PORT_") {
+			continue
+		}
+		if have, err := network.ParsePort(val); err != nil || have != want {
+			continue
+		}
+		mapped, err := network.ParsePort(cfg[key])
+		if err != nil {
+			return "", fmt.Errorf("address of %s: %w", port, err)
+		}
+		return net.JoinHostPort(cfg["HOST"], mapped.Port()), nil
+	}
+	return "", fmt.Errorf("%w: %s", ErrNotExposed, port)
 }
 
 // ContainerIP returns the primary container IP. Returns [ErrNotStarted] when

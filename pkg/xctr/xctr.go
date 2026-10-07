@@ -58,6 +58,9 @@ var (
 	// ErrNoNetwork is returned when container has no networks connected.
 	ErrNoNetwork = errors.New("no network")
 
+	// ErrNotExposed is returned when a container port is not exposed.
+	ErrNotExposed = errors.New("port not exposed")
+
 	// ErrReadOnly is returned for not allowed actions on the running container
 	// which is read-only.
 	ErrReadOnly = errors.New("read only")

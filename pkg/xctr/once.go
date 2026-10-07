@@ -6,6 +6,7 @@ package xctr
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -19,8 +20,9 @@ var once = NewOnce()
 
 // Once keeps track of started [CTR] instances. The zero value is ready to use.
 type Once struct {
-	col map[string]Container // Maps container names to their implementations.
-	mx  sync.RWMutex         // Guards struct fields.
+	col   map[string]Container   // Containers by name.
+	locks map[string]*sync.Mutex // Serialize [Once.Start] calls per name.
+	mx    sync.RWMutex           // Guards struct fields.
 }
 
 // NewOnce returns a new instance of [Once].
@@ -82,6 +84,80 @@ func (onc *Once) Get(name string) Container {
 // OnceGet returns the container tracked in the package-level collection by
 // name or nil. See [Once.Get].
 func OnceGet(name string) Container { return once.Get(name) }
+
+// Start returns the container registered under name. On first use it creates
+// the container with newFn, starts it with env, and registers it; concurrent
+// calls for the same name wait for that start instead of starting another. A
+// failed start is cleaned up and not registered, so a later call tries again.
+func (onc *Once) Start(
+	ctx context.Context,
+	env []string,
+	name string,
+	newFn func(name string) Container,
+) (Container, error) {
+
+	lck := onc.lock(name)
+	lck.Lock()
+	defer lck.Unlock()
+
+	if ctr := onc.Get(name); ctr != nil {
+		return ctr, nil
+	}
+	ctr := newFn(name)
+	if err := ctr.Start(ctx, env); err != nil {
+		err = fmt.Errorf("start %s: %w", name, err)
+		return nil, errors.Join(err, ctr.Cleanup(context.WithoutCancel(ctx)))
+	}
+	if !onc.AddNamed(name, ctr) {
+		// Registered by Add or AddNamed while this one was starting.
+		_ = ctr.Cleanup(context.WithoutCancel(ctx))
+		if ctr = onc.Get(name); ctr == nil {
+			return nil, fmt.Errorf("start %s: removed while starting", name)
+		}
+	}
+	return ctr, nil
+}
+
+// lock returns the mutex serializing [Once.Start] calls for name.
+func (onc *Once) lock(name string) *sync.Mutex {
+	onc.mx.Lock()
+	defer onc.mx.Unlock()
+	if onc.locks == nil {
+		onc.locks = make(map[string]*sync.Mutex)
+	}
+	lck, ok := onc.locks[name]
+	if !ok {
+		lck = &sync.Mutex{}
+		onc.locks[name] = lck
+	}
+	return lck
+}
+
+// OnceStart returns the container registered under name in the package-level
+// collection, creating and starting it with newFn on first use. It returns an
+// error when a container of another type is registered under name. See
+// [Once.Start].
+func OnceStart[T Container](
+	ctx context.Context,
+	env []string,
+	name string,
+	newFn func(name string) T,
+) (T, error) {
+
+	var zero T
+	ctr, err := once.Start(ctx, env, name, func(name string) Container {
+		return newFn(name)
+	})
+	if err != nil {
+		return zero, err
+	}
+	typed, ok := ctr.(T)
+	if !ok {
+		format := "start %s: registered container is %T, not %T"
+		return zero, fmt.Errorf(format, name, ctr, zero)
+	}
+	return typed, nil
+}
 
 // Stop stops the container with the given name and removes it from the
 // collection.

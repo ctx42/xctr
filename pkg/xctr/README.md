@@ -44,11 +44,15 @@ import "github.com/ctx42/xctr/pkg/xctr"
   allowed `Exec` commands (matched against a whitelist of regular
   expressions); the standalone `Whitelist` (`NewWhitelist`, `Add`, `Check`)
   applies the same matching anywhere.
+- `HostAddr` / `GuestAddr` — the "host:port" address of an exposed container
+  port, as reached from the host or from other containers.
 - `Pause` / `Unpause`, `MappedPort`, `ContainerIP`, `GatewayIP` — inspect and
   control a running container.
 - `Once` (`NewOnce`; the zero value is ready to use) — a registry for
   containers meant to be shared across many tests instead of started once per
-  test; `OnceAdd`, `OnceAddNamed`, `OnceGet`, `OnceNames`, `OnceStop`, and
+  test; `Once.Start` and the typed `OnceStart` start a container on first use
+  and return the same one to every later caller, parallel ones included;
+  `OnceAdd`, `OnceAddNamed`, `OnceGet`, `OnceNames`, `OnceStop`, and
   `OnceStopAll` drive a package-level instance.
 - `Logger` / `NewLogger` / `LogConsumerCfg` — a testcontainers log consumer
   that collects container logs and optionally prints them.
@@ -117,10 +121,19 @@ defer func() { _ = ctr.Cleanup(ctx) }()
 res := ctr.Exec(ctx, "echo", "hello")
 ```
 
-`ConfigHost` / `ConfigGuest` return the connection details collected once the
-container reports itself started. `ConfigHost` holds the host address and the
-host-mapped ports; `ConfigGuest` holds the container IP and the in-container
-ports. `PORT_<i>` follows the order of the request's `ExposedPorts`:
+`HostAddr` / `GuestAddr` return the address of an exposed container port once
+the container is started: `HostAddr` as the host reaches it, `GuestAddr` as
+other containers reach it. A port without a protocol is TCP; a port the
+request does not expose is an `ErrNotExposed` error:
+
+```go
+addr, err := ctr.HostAddr("80/tcp") // e.g. "localhost:32942"
+gst, err := ctr.GuestAddr("80/tcp") // e.g. "172.17.0.3:80"
+```
+
+`ConfigHost` / `ConfigGuest` return the same details as maps: the host address
+and host-mapped ports, and the container IP and in-container ports.
+`PORT_<i>` follows the order of the request's `ExposedPorts`:
 
 ```go
 cfg := ctr.ConfigHost()  // e.g. {"HOST": "localhost", "PORT_0": "32942/tcp"}
@@ -131,15 +144,16 @@ gst := ctr.ConfigGuest() // e.g. {"HOST": "172.17.0.3", "PORT_0": "80/tcp"}
 
 Sentinel errors, matched with `errors.Is`:
 
-| Error           | Returned when                                                        |
-|-----------------|----------------------------------------------------------------------|
-| `ErrEmptyCmd`   | `Exec` is called with an empty command.                              |
-| `ErrNotStarted` | The container is not started.                                        |
-| `ErrRunning`    | The container is already running.                                    |
-| `ErrExitCode`   | An `Exec` command returns a non-zero exit code.                      |
-| `ErrNoNetwork`  | The container has no networks connected.                             |
-| `ErrReadOnly`   | A mutating action is called on a read-only running container.        |
-| `ErrNotAllowed` | An action is not allowed, such as a command outside the whitelist.   |
+| Error           | Returned when                                                              |
+|-----------------|----------------------------------------------------------------------------|
+| `ErrEmptyCmd`   | `Exec` is called with an empty command.                                    |
+| `ErrNotStarted` | The container is not started.                                              |
+| `ErrRunning`    | The container is already running.                                          |
+| `ErrExitCode`   | An `Exec` command returns a non-zero exit code.                            |
+| `ErrNoNetwork`  | The container has no networks connected.                                   |
+| `ErrNotExposed` | `HostAddr` or `GuestAddr` is asked for a port the request does not expose. |
+| `ErrReadOnly`   | A mutating action is called on a read-only running container.              |
+| `ErrNotAllowed` | An action is not allowed, such as a command outside the whitelist.         |
 
 `ExecResult` unwraps to its error, so `errors.Is(res, xctr.ErrExitCode)`
 matches a command that exited non-zero.

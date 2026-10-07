@@ -1358,6 +1358,144 @@ func Test_CTR_MappedPort(t *testing.T) {
 	})
 }
 
+func Test_CTR_HostAddr(t *testing.T) {
+	t.Run("started container", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR("echo", xctrtest.ImageReq())
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		have, err := ctr.HostAddr("80/tcp")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		rsp := httpkit.NewRequest(t).Get("http://" + have)
+		assert.NotEmpty(t, rsp)
+	})
+
+	t.Run("error - not exposed", func(t *testing.T) {
+		// --- When ---
+		have, err := addrCTR().HostAddr("81/tcp")
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrNotExposed, err)
+		assert.ErrorEqual(t, "port not exposed: 81/tcp", err)
+		assert.Empty(t, have)
+	})
+
+	t.Run("error - protocol differs", func(t *testing.T) {
+		// --- When ---
+		have, err := addrCTR().HostAddr("80/udp")
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrNotExposed, err)
+		assert.Empty(t, have)
+	})
+
+	t.Run("error - invalid port", func(t *testing.T) {
+		// --- When ---
+		have, err := addrCTR().HostAddr("http")
+
+		// --- Then ---
+		assert.ErrorContain(t, "address of http: invalid port", err)
+		assert.Empty(t, have)
+	})
+
+	t.Run("error - not started", func(t *testing.T) {
+		// --- Given ---
+		ctr := NewCTR("echo", xctrtest.ImageReq())
+
+		// --- When ---
+		have, err := ctr.HostAddr("80/tcp")
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrNotStarted, err)
+		assert.Empty(t, have)
+	})
+
+	t.Run("error - created but not started", func(t *testing.T) {
+		// --- Given ---
+		ctr := &CTR{dc: &tc.DockerContainer{}}
+
+		// --- When ---
+		have, err := ctr.HostAddr("80/tcp")
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrNotStarted, err)
+		assert.Empty(t, have)
+	})
+}
+
+func Test_CTR_HostAddr_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		port string
+		want string
+	}{
+		{"with protocol", "80/tcp", "localhost:32768"},
+		{"default protocol", "80", "localhost:32768"},
+		{"second port", "443/tcp", "localhost:32769"},
+		{"udp port", "53/udp", "localhost:32770"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			ctr := addrCTR()
+
+			// --- When ---
+			have, err := ctr.HostAddr(tc.port)
+
+			// --- Then ---
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_CTR_GuestAddr(t *testing.T) {
+	t.Run("started container", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR("echo", xctrtest.ImageReq())
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		have, err := ctr.GuestAddr("80/tcp")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		ip := must.Value(ctr.ContainerIP(ctx))
+		assert.Equal(t, ip+":80", have)
+	})
+
+	t.Run("recorded config", func(t *testing.T) {
+		// --- When ---
+		have, err := addrCTR().GuestAddr("443")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "172.17.0.3:443", have)
+	})
+
+	t.Run("error - not exposed", func(t *testing.T) {
+		// --- When ---
+		have, err := addrCTR().GuestAddr("81/tcp")
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrNotExposed, err)
+		assert.Empty(t, have)
+	})
+}
+
 func Test_CTR_ContainerIP(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		// --- Given ---

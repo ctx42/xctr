@@ -13,6 +13,7 @@ import (
 	"github.com/ctx42/testing/pkg/assert"
 	"github.com/ctx42/testing/pkg/tester"
 	"github.com/ctx42/testkit/pkg/dkrkit"
+	tc "github.com/testcontainers/testcontainers-go"
 )
 
 // ctrGone polls until the container with the given ID is no longer present,
@@ -99,6 +100,26 @@ func Test_endpoint(t *testing.T) {
 		// --- Then ---
 		assert.Equal(t, "http://host:42?a=b&c=d", have)
 	})
+}
+
+// addrCTR returns a [CTR] bound as if started with ports "80/tcp", "443/tcp",
+// and "53/udp" exposed, without a running container.
+func addrCTR() *CTR {
+	return &CTR{
+		dc: &tc.DockerContainer{},
+		cfgHost: map[string]string{
+			"HOST":   "localhost",
+			"PORT_0": "32768/tcp",
+			"PORT_1": "32769/tcp",
+			"PORT_2": "32770/udp",
+		},
+		cfgGuest: map[string]string{
+			"HOST":   "172.17.0.3",
+			"PORT_0": "80/tcp",
+			"PORT_1": "443/tcp",
+			"PORT_2": "53/udp",
+		},
+	}
 }
 
 // Test sentinel errors. Messages preserved from the original kit package so

@@ -5,6 +5,8 @@ package xctr
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ctx42/testing/pkg/assert"
@@ -270,6 +272,192 @@ func Test_Once_Get(t *testing.T) {
 
 		// --- Then ---
 		assert.Same(t, ctr, have)
+	})
+}
+
+// fakeCtr is a [Container] whose Start and Cleanup only count their calls.
+type fakeCtr struct {
+	*CTR
+	startErr error        // Returned by Start.
+	starts   atomic.Int32 // Number of Start calls.
+	cleanups atomic.Int32 // Number of Cleanup calls.
+}
+
+// newFake returns a function creating a [fakeCtr] whose Start returns err.
+func newFake(err error) func(name string) *fakeCtr {
+	return func(name string) *fakeCtr {
+		return &fakeCtr{CTR: NewCTR(name, xctrtest.ImageReq()), startErr: err}
+	}
+}
+
+func (fak *fakeCtr) Start(context.Context, []string) error {
+	fak.starts.Add(1)
+	return fak.startErr
+}
+
+func (fak *fakeCtr) Cleanup(context.Context) error {
+	fak.cleanups.Add(1)
+	return nil
+}
+
+// asContainer adapts newFn to the signature [Once.Start] takes.
+func asContainer(newFn func(string) *fakeCtr) func(string) Container {
+	return func(name string) Container { return newFn(name) }
+}
+
+func Test_Once_Start(t *testing.T) {
+	t.Run("starts and registers", func(t *testing.T) {
+		// --- Given ---
+		var one Once
+		newFn := asContainer(newFake(nil))
+
+		// --- When ---
+		have, err := one.Start(t.Context(), nil, "ctr0", newFn)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Same(t, have, one.Get("ctr0"))
+		assert.Equal(t, int32(1), have.(*fakeCtr).starts.Load())
+	})
+
+	t.Run("reuses registered", func(t *testing.T) {
+		// --- Given ---
+		var one Once
+		newFn := asContainer(newFake(nil))
+		first := must.Value(one.Start(t.Context(), nil, "ctr0", newFn))
+
+		// --- When ---
+		have, err := one.Start(t.Context(), nil, "ctr0", newFn)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Same(t, first, have)
+		assert.Equal(t, int32(1), have.(*fakeCtr).starts.Load())
+	})
+
+	t.Run("concurrent calls start once", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		var one Once
+		var created atomic.Int32
+		newFn := func(name string) Container {
+			created.Add(1)
+			return newFake(nil)(name)
+		}
+
+		// --- When ---
+		var wg sync.WaitGroup
+		haves := make([]Container, 10)
+		for i := range haves {
+			wg.Go(func() {
+				haves[i] = must.Value(one.Start(ctx, nil, "ctr0", newFn))
+			})
+		}
+		wg.Wait()
+
+		// --- Then ---
+		assert.Equal(t, int32(1), created.Load())
+		for _, have := range haves {
+			assert.Same(t, haves[0], have)
+		}
+	})
+
+	t.Run("error - start fails", func(t *testing.T) {
+		// --- Given ---
+		var one Once
+		var fak *fakeCtr
+		newFn := func(name string) Container {
+			fak = newFake(errTest)(name)
+			return fak
+		}
+
+		// --- When ---
+		have, err := one.Start(t.Context(), nil, "ctr0", newFn)
+
+		// --- Then ---
+		assert.ErrorIs(t, errTest, err)
+		assert.ErrorContain(t, "start ctr0: ", err)
+		assert.Nil(t, have)
+		assert.Equal(t, int32(1), fak.cleanups.Load())
+		assert.Nil(t, one.Get("ctr0"))
+	})
+
+	t.Run("retries after a failed start", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		var one Once
+		_, _ = one.Start(ctx, nil, "ctr0", asContainer(newFake(errTest)))
+
+		// --- When ---
+		have, err := one.Start(ctx, nil, "ctr0", asContainer(newFake(nil)))
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Same(t, have, one.Get("ctr0"))
+	})
+
+	t.Run("registered while starting", func(t *testing.T) {
+		// --- Given ---
+		var one Once
+		other := newFake(nil)("other")
+		var fak *fakeCtr
+		newFn := func(name string) Container {
+			fak = newFake(nil)(name)
+			one.AddNamed(name, other)
+			return fak
+		}
+
+		// --- When ---
+		have, err := one.Start(t.Context(), nil, "ctr0", newFn)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Same(t, other, have)
+		assert.Equal(t, int32(1), fak.cleanups.Load())
+	})
+}
+
+func Test_OnceStart(t *testing.T) {
+	t.Run("typed container", func(t *testing.T) {
+		// --- Given ---
+		name := t.Name()
+		t.Cleanup(func() { _ = OnceStop(context.Background(), name) })
+
+		// --- When ---
+		have, err := OnceStart(t.Context(), nil, name, newFake(nil))
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Same(t, have, OnceGet(name))
+		assert.Equal(t, int32(1), have.starts.Load())
+	})
+
+	t.Run("error - start fails", func(t *testing.T) {
+		// --- Given ---
+		name := t.Name()
+
+		// --- When ---
+		have, err := OnceStart(t.Context(), nil, name, newFake(errTest))
+
+		// --- Then ---
+		assert.ErrorIs(t, errTest, err)
+		assert.Nil(t, have)
+	})
+
+	t.Run("error - registered with another type", func(t *testing.T) {
+		// --- Given ---
+		name := t.Name()
+		OnceAddNamed(name, NewCTR(name, xctrtest.ImageReq()))
+		t.Cleanup(func() { _ = OnceStop(context.Background(), name) })
+
+		// --- When ---
+		have, err := OnceStart(t.Context(), nil, name, newFake(nil))
+
+		// --- Then ---
+		wMsg := "start " + name + ": registered container is *xctr.CTR, " +
+			"not *xctr.fakeCtr"
+		assert.ErrorEqual(t, wMsg, err)
+		assert.Nil(t, have)
 	})
 }
 
