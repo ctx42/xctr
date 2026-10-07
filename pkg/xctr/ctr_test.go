@@ -4,9 +4,11 @@
 package xctr
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -228,6 +230,24 @@ func Test_cloneReq(t *testing.T) {
 		assert.Equal(t, "val", *req.BuildArgs["ARG"])
 		assert.Equal(t, "80/tcp", req.ExposedPorts[0])
 		assert.Equal(t, "a", req.Files[0].HostFilePath)
+	})
+
+	t.Run("context archive not shared", func(t *testing.T) {
+		// --- Given ---
+		arc := bytes.NewReader([]byte("abc"))
+		req := tc.GenericContainerRequest{
+			ContainerRequest: tc.ContainerRequest{
+				FromDockerfile: tc.FromDockerfile{ContextArchive: arc},
+			},
+		}
+
+		// --- When ---
+		have := cloneReq(req)
+
+		// --- Then ---
+		data := must.Value(io.ReadAll(have.ContextArchive))
+		assert.Equal(t, "abc", string(data))
+		assert.Equal(t, 3, arc.Len())
 	})
 
 	t.Run("nil maps and slices", func(t *testing.T) {

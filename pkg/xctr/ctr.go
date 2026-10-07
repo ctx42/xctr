@@ -153,14 +153,22 @@ func NewCTR(name string, req tc.GenericContainerRequest, opts ...Option) *CTR {
 	return ctr
 }
 
-// cloneReq returns a copy of the request whose maps and slices that [CTR]
-// writes to are not shared with the original.
+// cloneReq returns a copy of the request that shares none of the maps and
+// slices [CTR] writes to with the original. A context archive that supports
+// [io.ReaderAt] gets its own read offset, so copies can be built concurrently.
 func cloneReq(req tc.GenericContainerRequest) tc.GenericContainerRequest {
 	req.Labels = maps.Clone(req.Labels)
 	req.Env = maps.Clone(req.Env)
 	req.BuildArgs = maps.Clone(req.BuildArgs)
 	req.ExposedPorts = slices.Clone(req.ExposedPorts)
 	req.Files = slices.Clone(req.Files)
+	type sizedReaderAt interface {
+		io.ReaderAt
+		Size() int64
+	}
+	if arc, ok := req.ContextArchive.(sizedReaderAt); ok {
+		req.ContextArchive = io.NewSectionReader(arc, 0, arc.Size())
+	}
 	return req
 }
 
