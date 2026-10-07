@@ -1760,44 +1760,13 @@ func Test_CTR_FormatInfoLine(t *testing.T) {
 }
 
 func Test_scmFromGit(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		// --- When ---
-		have := scmFromGit(t.Context())
+	// --- When ---
+	have := scmFromGit(t.Context())
 
-		// --- Then ---
-		assert.NotEmpty(t, have.repo)
-		assert.NotEmpty(t, have.rev)
-		assert.NotEmpty(t, have.hash)
-	})
-
-	t.Run("cached", func(t *testing.T) {
-		// --- Given ---
-		orig := scmCache.scm
-		t.Cleanup(func() { scmCache.scm = orig })
-		scmCache.scm = &scmInfo{repo: "repo", rev: "rev", hash: "hash"}
-
-		// --- When ---
-		have := scmFromGit(t.Context())
-
-		// --- Then ---
-		assert.Equal(t, scmInfo{repo: "repo", rev: "rev", hash: "hash"}, have)
-	})
-
-	t.Run("canceled context is not cached", func(t *testing.T) {
-		// --- Given ---
-		orig := scmCache.scm
-		t.Cleanup(func() { scmCache.scm = orig })
-		scmCache.scm = nil
-		ctx, cxl := context.WithCancel(t.Context())
-		cxl()
-
-		// --- When ---
-		have := scmFromGit(ctx)
-
-		// --- Then ---
-		assert.Equal(t, xdef.PhHash, have.hash)
-		assert.Nil(t, scmCache.scm)
-	})
+	// --- Then ---
+	assert.NotEmpty(t, have.repo)
+	assert.NotEmpty(t, have.rev)
+	assert.NotEmpty(t, have.hash)
 }
 
 func Test_buildMeta(t *testing.T) {

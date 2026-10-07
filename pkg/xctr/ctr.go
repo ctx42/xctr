@@ -660,23 +660,10 @@ type scmInfo struct {
 	hash string
 }
 
-// scmCache holds the result of the first scmFromGit call not cut short by its
-// context, so the git commands run once per process.
-var scmCache struct {
-	scm *scmInfo
-	mx  sync.Mutex
-}
-
 // scmFromGit resolves origin, describe, and latest hash from the checkout.
 // Credentials in the origin URL are dropped. Missing values fall back to
 // [xdef] placeholders.
 func scmFromGit(ctx context.Context) scmInfo {
-	scmCache.mx.Lock()
-	defer scmCache.mx.Unlock()
-	if scmCache.scm != nil {
-		return *scmCache.scm
-	}
-
 	scm := scmInfo{
 		repo: xdef.PhUnknown,
 		rev:  xdef.PhTag,
@@ -690,9 +677,6 @@ func scmFromGit(ctx context.Context) scmInfo {
 	}
 	if val, _ := gitaid.LatestHash(ctx, ""); val != "" {
 		scm.hash = val
-	}
-	if ctx.Err() == nil {
-		scmCache.scm = &scm
 	}
 	return scm
 }
