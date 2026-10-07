@@ -82,16 +82,18 @@ func DockerfileReq() tc.GenericContainerRequest {
 }
 
 // NewClient returns a new Docker API client which is automatically closed when
-// the test and all its subtests complete. It fails the test immediately when
-// the client cannot be created.
+// the test and all its subtests complete. It connects to the Docker host
+// testcontainers uses: the Docker context, the testcontainers properties file,
+// or DOCKER_HOST. It fails the test immediately when the client cannot be
+// created.
 func NewClient(t tester.T) *client.Client {
 	t.Helper()
-	cli, err := client.New(client.FromEnv)
+	cli, err := tc.NewDockerClientWithOpts(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = cli.Close() })
-	return cli
+	return cli.Client
 }
 
 // Container is the minimal container behavior CanStart needs.
