@@ -849,9 +849,6 @@ func (ctr *CTR) bindStarted(ctx context.Context) error {
 	ctr.cfgGuest = make(map[string]string)
 
 	for i, ep := range ctr.runReq.ExposedPorts {
-		if _, after, ok := strings.Cut(ep, ":"); ok {
-			ep = after
-		}
 		port, err := ctr.dc.MappedPort(ctx, ep)
 		if err != nil {
 			return fmt.Errorf("mapped port %s: %w", ep, err)
