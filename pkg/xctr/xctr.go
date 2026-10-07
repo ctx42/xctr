@@ -78,7 +78,8 @@ type Manager interface {
 	// Name returns the container name.
 	Name() string
 
-	// Request returns generic container request.
+	// Request returns the generic container request as configured. It does
+	// not include what Start adds, also after the container is started.
 	Request() tc.GenericContainerRequest
 
 	// Start builds or pulls the image, injects SCM and build metadata as

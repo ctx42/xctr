@@ -14,7 +14,8 @@ type CleanupFn func(context.Context) error
 
 // CleanupTrait provides registration and execution of cleanup callback
 // functions. Embed it in another struct to give that struct cleanup
-// capabilities. It is safe for concurrent use.
+// capabilities. It is safe for concurrent use and must not be copied after
+// first use.
 type CleanupTrait struct {
 	// Slice of cleanup functions called from Cleanup method.
 	cleanup []CleanupFn

@@ -21,12 +21,14 @@ Single module `github.com/ctx42/xctr`; all code is in `pkg/xctr`.
   `Info` (read-only state), and `Actions` (exec, file I/O, env/labels,
   read-only/whitelist). `CTR` (`ctr.go`) is the only implementation.
 - `CTR.Start` pipeline (`ctr.go`): `scmFromGit` (git via `gitaid`, falling
-  back to `xdef` placeholders) → `buildMeta` (pure) →
-  `prepareRequest` (pure: stamps OCI labels/env with `SetMissing` so caller
-  values win; Dockerfile builds get labels via `BuildOptionsModifier` plus build
-  args and a random repo/tag; applies `C42_XCTR_*` env switches) →
-  `startAndBind` → `bindStarted` (fills `cfgHost`/`cfgGuest` with `HOST` and
-  `PORT_<i>` keys, indexed by `ExposedPorts` order). Keep
+  back to `xdef` placeholders) → `buildMeta` (pure) → `prepareRequest` (pure:
+  stamps OCI labels/env with `SetMissing` so caller values win; Dockerfile
+  builds get labels via `BuildOptionsModifier` plus build args and a random
+  repo/tag; applies `C42_XCTR_*` env switches) → `startAndBind` →
+  `bindStarted` (fills `cfgHost`/`cfgGuest` with `HOST` and `PORT_<i>` keys,
+  indexed by `ExposedPorts` order). `prepareRequest` works on a `cloneReq`
+  copy stored in `runReq`; `req` keeps the configured request, which
+  `Request` returns, so `Start` can run again after `Terminate`. Keep
   `buildMeta`/`prepareRequest` free of git and Docker calls so they stay
   unit-testable.
 - `env []string` passed to `Start` is an `os.Environ()`-shaped slice read with

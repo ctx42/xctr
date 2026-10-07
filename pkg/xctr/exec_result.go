@@ -29,9 +29,9 @@ type ExecResult struct {
 }
 
 // Err returns the command execution error when one is set. Otherwise, when the
-// exit code is not zero, it returns an error wrapping [ErrExitCode] with the
-// trimmed standard error output, "exit code: <stderr>", or "exit code: N" when
-// that output is blank. It returns nil on success.
+// exit code is not zero, it returns an error wrapping [ErrExitCode]:
+// "exit code: <stderr>" with the standard error output trimmed, or
+// "exit code: N" when that output is blank. It returns nil on success.
 func (er ExecResult) Err() error {
 	if er.ExecError != nil {
 		return er.ExecError
