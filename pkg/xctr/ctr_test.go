@@ -630,17 +630,18 @@ func Test_CTR_Exec(t *testing.T) {
 
 	t.Run("error - context timeout", func(t *testing.T) {
 		// --- Given ---
+		ctx := t.Context()
 		ctr := NewCTR("echo", xctrtest.ImageReq())
-		assert.NoError(t, ctr.Start(t.Context(), nil))
+		assert.NoError(t, ctr.Start(ctx, nil))
 		t.Cleanup(func() {
-			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(t.Context())))
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
 		})
 
-		ctx, cxl := context.WithTimeout(t.Context(), 1500*time.Millisecond)
+		toCtx, cxl := context.WithTimeout(ctx, 1500*time.Millisecond)
 		defer cxl()
 
 		// --- When ---
-		have := ctr.Exec(ctx, "sleep", "10")
+		have := ctr.Exec(toCtx, "sleep", "10")
 
 		// --- Then ---
 		assert.ErrorIs(t, context.DeadlineExceeded, have.Unwrap())

@@ -779,9 +779,9 @@ func prepareRequest(
 		}
 	}
 	if len(lgrs) > 0 {
-		hook := func(_ context.Context, ctr tc.Container) error {
+		hook := func(_ context.Context, tcc tc.Container) error {
 			for _, lgr := range lgrs {
-				lgr.SetCID(ctr.GetContainerID())
+				lgr.SetCID(tcc.GetContainerID())
 			}
 			return nil
 		}
