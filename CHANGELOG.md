@@ -1,0 +1,54 @@
+## v0.1.0 (Thu, 08 Oct 2026 13:32:04 UTC)
+- chore: add MIT license.
+- feat(xctr): add internal tar archive package.
+- feat(xctr): define the Container interface and ExecResult.
+- feat(xctr): add exec command whitelist.
+- feat(xctr): add CleanupTrait for ordered cleanups.
+- feat(xctr): add image reference and request helpers.
+- feat(xctr): add Logger log consumer.
+- feat(xctr): expose tar archive helpers.
+- feat(xctrtest): add container test helpers.
+- feat(xctr): add CTR container implementation.
+- test(xctrtest): add tests for the container helpers.
+- feat(xctr): add Once registry for shared containers.
+- docs(xctr): add package README and examples.
+- docs: add project README and agent instructions.
+- chore(dev): set package in go-test-all run configuration.
+- docs: complete the xctr API and configuration docs.
+- docs: rewrite README to pitch xctr and show its usage.
+- fix(xctr): copy the request maps and slices in NewCTR.
+- fix(xctr)!: let Start run again after Terminate.
+- fix(xctr): create the Exec client on the testcontainers Docker host.
+- fix(xctr): remove images named by a fully qualified reference.
+- fix(xctr): terminate the container when Start fails to bind it.
+- fix(xctr): record ID and reference of a created container.
+- fix(xctr): attach the WithCTRLogger consumer without C42_XCTR_LOG.
+- fix(xctrtest): fail AssertBuildArg on a nil build-arg value.
+- fix(xctr): guard cleanups and the exec client against data races.
+- fix(xctr): give ExecContent scripts a unique container path.
+- fix(xctr): drop credentials from the SCM origin URL.
+- fix(xctr)!: clear Cmd when C42_XCTR_ENTRYPOINT overrides it.
+- fix(xctr): prefix printed container logs with the container ID.
+- docs: make the SharedRedis example safe for parallel tests.
+- fix(xctr): report the exit code when stderr is only whitespace.
+- fix(xctr): fail GatewayIP when the network has no gateway.
+- test(xctr): apply the Exec timeout only to Exec.
+- fix(xctr): round-trip digests and lookalike registries in refs.
+- perf(xctr): resolve SCM provenance once per process.
+- fix(xctr): stop keeping lines in the default printing logger.
+- fix(xctrtest)!: fail the test when CanStart's cleanup fails.
+- test(xctr): rename gotCtr to hCtr.
+- docs: wrap the CTR.Start pipeline note at 80 columns.
+- chore(dev): end go-test-all run configuration with a newline.
+- revert(xctr): resolve SCM provenance on every Start.
+- test(xctr): keep follow-up actions out of the Then sections.
+- style(xctr): name the hook's container tcc and reuse the test context.
+- docs(xctr): document Request semantics and CleanupTrait copying.
+- fix(xctrtest): create NewClient on the testcontainers Docker host.
+- refactor(xctr): pass exposed ports to MappedPort unchanged.
+- fix(xctr): give each request copy its own context archive offset.
+- fix(xctr): remove the image when Start fails to bind the container.
+- feat(xctr): add OnceStart, HostAddr and GuestAddr.
+- ci: run the race-enabled test suite on GitHub Actions.
+- ci: point testcontainers at the setup-docker-action daemon.
+
