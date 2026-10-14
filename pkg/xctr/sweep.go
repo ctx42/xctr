@@ -37,7 +37,7 @@ const imgPrefix = "c42-tst-img-"
 //
 //	func TestMain(m *testing.M) {
 //		code := m.Run()
-//		_ = xctr.Sweep(context.Background(), 10*time.Minute)
+//		_ = xctr.Sweep(context.Background(), time.Minute)
 //		os.Exit(code)
 //	}
 //
