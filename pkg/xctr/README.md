@@ -33,7 +33,8 @@ import "github.com/ctx42/xctr/pkg/xctr"
   `WithCTRLogger` and `WithCTRImgRm` options attach a log consumer and remove
   the image on `Terminate`. `Terminate` kills the container at once, since
   test containers are ephemeral; `WithCTRStopTimeout` gives it a grace period
-  after SIGTERM instead.
+  after SIGTERM instead. Identical Dockerfile requests share one built image
+  per test process; `WithCTROwnImage` builds one for the container alone.
 - `ImageReq(ref)` — a container request for an image reference.
 - `ExposePort`, `AddFile`, `Setenv`, `SetLabel` — configure the request before
   `Start`; `CreateTemp` writes a host temp file removed on `Cleanup`.
@@ -61,7 +62,8 @@ import "github.com/ctx42/xctr/pkg/xctr"
 - `CleanupTrait` (`RegisterCleanup`, `Cleanup`) — reverse-order, run-once
   cleanup callbacks to embed in your own types.
 - `Sweep` — remove the containers and built images the testcontainers
-  reaper left behind in earlier test runs; call it from `TestMain`.
+  reaper left behind in earlier test runs, and the images this test process
+  shared; call it from `TestMain`.
 - `Ref`, `ParseRef`, `RandRef`, `RandName`, `RandTag`, `RandNet`, `ShortID` —
   build, parse, and randomize image references, names, tags, network names,
   and IDs.
@@ -197,20 +199,33 @@ In addition to the `xdef` labels described above, `Start` sets the
 
 ### Built images
 
-Images built from a Dockerfile are ephemeral. `Terminate` removes the image
-with its container, a `Start` that fails after the build removes it too, and
-the testcontainers reaper removes it when the test process dies without
-cleaning up. `WithCTRKeepImage` keeps it; a kept image is not reaped either,
-so give it a fixed `Repo` and `Tag`. Images pulled by reference are kept
-unless `WithCTRImgRm` is set: removing them would force a pull on every run.
+Images built from a Dockerfile are ephemeral. Containers of identical
+Dockerfile requests share one image: the first `Start` in the test process
+builds it, and later ones run it without building again, which saves a build
+per test. Identical means the same build context, Dockerfile, build
+arguments, labels, and builder; the build date counts only when
+`C42_BLD_DATE` pins it. A shared image outlives its containers: `Sweep`
+removes it at the end of the run, and the testcontainers reaper when the test
+process dies without cleaning up.
+
+A request with a fixed `Repo` or `Tag`, a `BuildOptionsModifier` (`SetLabel`
+sets one on a Dockerfile request), build hooks, image substitutors, or a
+printed build log builds its own image, and so does a `CTR` with
+`WithCTROwnImage` or `WithCTRImgRm`. `Terminate` removes an own image with its
+container, and a `Start` that fails after the build removes it too.
+`WithCTRKeepImage` keeps it; a kept image is not reaped either, so give it a
+fixed `Repo` and `Tag`. Images pulled by reference are kept unless
+`WithCTRImgRm` is set: removing them would force a pull on every run.
 
 The reaper (Ryuk) can still miss resources: it exits after a single pass, and
 it gives up on images when listing them takes longer than its 10 s request
 timeout, which happens on a busy daemon holding many images. `Sweep` removes
 what it left: xctr containers and built images of sessions whose reaper no
 longer runs, created or last tagged more than `grace` ago. Kept images are not
-marked for reaping, so `Sweep` leaves them alone too. `Sweep` lists containers
-and images, so nothing in xctr calls it; call it once at the end of a test run:
+marked for reaping, so `Sweep` leaves them alone too. It also removes the
+images the calling process shared, unless a container still uses them.
+`Sweep` lists containers and images, so nothing in xctr calls it; call it once
+at the end of a test run:
 
 ```go
 func TestMain(m *testing.M) {

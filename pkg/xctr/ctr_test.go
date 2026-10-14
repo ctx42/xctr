@@ -1866,7 +1866,7 @@ func Test_CTR_Terminate(t *testing.T) {
 	t.Run("removes built image", func(t *testing.T) {
 		// --- Given ---
 		ctx := t.Context()
-		ctr := NewCTR("built", xctrtest.DockerfileReq())
+		ctr := NewCTR("built", xctrtest.DockerfileReq(), WithCTROwnImage)
 		assert.NoError(t, ctr.Start(ctx, nil))
 		t.Cleanup(func() {
 			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
@@ -1880,6 +1880,24 @@ func Test_CTR_Terminate(t *testing.T) {
 		assert.NoError(t, err)
 		ims := dkrkit.NewT(t).ImgLs(dkrkit.WithImgLsFilter("reference=" + ref))
 		assert.Nil(t, ims.FindByRef(ref))
+	})
+
+	t.Run("keeps shared image", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		resetShared(t)
+		ctr := NewCTR(t.Name(), xctrtest.DockerfileReq())
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		err := ctr.Terminate(ctx)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.True(t, imgExists(t, ctr.Reference()))
 	})
 
 	t.Run("keep built image", func(t *testing.T) {
@@ -2268,11 +2286,13 @@ func Test_prepareRequest(t *testing.T) {
 		assert.Equal(t, want, *have.BuildArgs[xdef.EnvBldDate])
 		assert.NotNil(t, have.BuildOptionsModifier)
 
+		assert.Equal(t, "echo", have.Labels[LabTestCtrName])
+		assert.Equal(t, "2000-01-02T03:04:05Z", have.Env[xdef.EnvBldDate])
+
 		opts := &client.ImageBuildOptions{}
 		have.BuildOptionsModifier(opts)
 		assert.Equal(t, "r", opts.Labels[xdef.LabImgSrc])
-		assert.Equal(t, "echo", opts.Labels[LabTestCtrName])
-		assert.Equal(t, "2000-01-02T03:04:05Z", have.Env[xdef.EnvBldDate])
+		assert.HasNoKey(t, LabTestCtrName, opts.Labels)
 	})
 
 	t.Run("build log enabled", func(t *testing.T) {
@@ -2592,12 +2612,8 @@ func Test_CTR_Start(t *testing.T) {
 		assert.Equal(t, ctr.dc.GetContainerID(), ctr.ID())
 		inspect := must.Value(ctr.dc.Inspect(ctx))
 		assert.Equal(t, inspect.Config.Image, ctr.Reference())
-
-		wArgs := map[string]*string{
-			xdef.EnvBldDate:    new("2000-01-02T03:04:05Z"),
-			xdef.EnvBldImgBase: new(xctrtest.EchoServerRef),
-		}
-		assert.Equal(t, wArgs, ctr.runReq.BuildArgs)
+		assert.Equal(t, ctr.Reference(), ctr.runReq.Image)
+		assert.False(t, ctr.runReq.ShouldBuildImage())
 
 		hCtr := must.Value(dkrkit.NewT(t).CtrPs().FindByID(ctr.ID()))
 		wEnv := map[string]string{
@@ -2798,7 +2814,7 @@ func Test_CTR_Start(t *testing.T) {
 		cli := xctrtest.NewClient(t)
 		img := must.Value(cli.ImageInspect(ctx, ctr.Reference()))
 		assert.NotEmpty(t, img.Config.Labels["org.testcontainers.sessionId"])
-		assert.Equal(t, t.Name(), img.Config.Labels[LabTestCtrName])
+		assert.Equal(t, scm.repo, img.Config.Labels[xdef.LabImgSrc])
 
 		// The classic builder records every build label as a history step.
 		hist := must.Value(cli.ImageHistory(ctx, ctr.Reference()))
@@ -2807,6 +2823,77 @@ func Test_CTR_Start(t *testing.T) {
 			steps = append(steps, itm.CreatedBy)
 		}
 		assert.NotContain(t, "LABEL ", strings.Join(steps, "\n"))
+	})
+
+	t.Run("shares the build", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		resetShared(t)
+		oth := NewCTR("other", xctrtest.DockerfileReq())
+		assert.NoError(t, oth.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, oth.Cleanup(context.WithoutCancel(ctx)))
+		})
+		ctr := NewCTR(t.Name(), xctrtest.DockerfileReq())
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		err := ctr.Start(ctx, nil)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, oth.Reference(), ctr.Reference())
+		hCtr := must.Value(dkrkit.NewT(t).CtrPs().FindByID(ctr.ID()))
+		assert.Equal(t, t.Name(), hCtr.Labels[LabTestCtrName])
+	})
+
+	t.Run("concurrent starts share one build", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		resetShared(t)
+		oth := NewCTR("other", xctrtest.DockerfileReq())
+		t.Cleanup(func() {
+			assert.NoError(t, oth.Cleanup(context.WithoutCancel(ctx)))
+		})
+		ctr := NewCTR(t.Name(), xctrtest.DockerfileReq())
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+		othErr := make(chan error, 1)
+		go func() { othErr <- oth.Start(ctx, nil) }()
+
+		// --- When ---
+		err := ctr.Start(ctx, nil)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.NoError(t, <-othErr)
+		assert.Equal(t, oth.Reference(), ctr.Reference())
+		assert.Len(t, 1, sharedImgs)
+	})
+
+	t.Run("own image", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		resetShared(t)
+		oth := NewCTR("other", xctrtest.DockerfileReq())
+		assert.NoError(t, oth.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, oth.Cleanup(context.WithoutCancel(ctx)))
+		})
+		ctr := NewCTR(t.Name(), xctrtest.DockerfileReq(), WithCTROwnImage)
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		err := ctr.Start(ctx, nil)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.NotEqual(t, oth.Reference(), ctr.Reference())
 	})
 
 	t.Run("restart from Dockerfile", func(t *testing.T) {
@@ -2946,7 +3033,7 @@ func Test_CTR_Start(t *testing.T) {
 		req.HostConfigModifier = func(hc *container.HostConfig) {
 			hc.Memory = 1
 		}
-		ctr := NewCTR(t.Name(), req)
+		ctr := NewCTR(t.Name(), req, WithCTROwnImage)
 		t.Cleanup(func() {
 			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
 		})

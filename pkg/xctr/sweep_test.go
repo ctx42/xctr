@@ -54,6 +54,20 @@ func Test_Sweep(t *testing.T) {
 		assert.True(t, imgExists(t, ref))
 	})
 
+	t.Run("removes shared images", func(t *testing.T) {
+		// --- Given ---
+		resetShared(t)
+		ref := commitImg(t, nil)
+		sharedImgs["key"] = builtImg(ref)
+
+		// --- When ---
+		err := Sweep(t.Context(), time.Hour)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.False(t, imgExists(t, ref))
+	})
+
 	t.Run("error - docker client", func(t *testing.T) {
 		// --- Given ---
 		orig := newDockerClient

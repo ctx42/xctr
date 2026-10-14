@@ -17,6 +17,7 @@ import (
 	"github.com/ctx42/testing/pkg/must"
 	"github.com/ctx42/testing/pkg/tester"
 	"github.com/ctx42/testkit/pkg/dkrkit"
+	"github.com/moby/moby/api/types/build"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	tc "github.com/testcontainers/testcontainers-go"
@@ -88,6 +89,47 @@ func resetDaemonBuilder(t tester.T) {
 		daemonBld, daemonBldOK = bld, ok
 	})
 }
+
+// resetShared clears the registry of shared images for the test and restores
+// it when the test ends. Images shared during the test are untagged then.
+func resetShared(t tester.T) {
+	t.Helper()
+	sharedImgsMx.Lock()
+	orig := sharedImgs
+	sharedImgs = make(map[string]*sharedImg)
+	sharedImgsMx.Unlock()
+	t.Cleanup(func() {
+		ctx := context.WithoutCancel(t.Context())
+		cli := must.Value(newDockerClient(ctx))
+		defer func() { _ = cli.Close() }()
+		_ = dropShared(ctx, cli)
+		sharedImgsMx.Lock()
+		defer sharedImgsMx.Unlock()
+		sharedImgs = orig
+	})
+}
+
+// builtImg returns a finished shared image build of the reference.
+func builtImg(ref string) *sharedImg {
+	img := &sharedImg{done: make(chan struct{}), ref: ref}
+	close(img.done)
+	return img
+}
+
+// prepare sets the run request of ctr as [CTR.Start] does with env, without
+// asking git or the daemon, and returns the metadata it used.
+func prepare(ctr *CTR, env []string) startMeta {
+	meta := buildMeta(env, ctr.name, scmInfo{repo: "r", rev: "v", hash: "h"})
+	meta.builder = build.BuilderBuildKit
+	ctr.runReq = prepareRequest(cloneReq(ctr.req), meta, env, ctr.log)
+	return meta
+}
+
+// errReadSeeker is an [io.ReadSeeker] failing every read.
+type errReadSeeker struct{}
+
+func (errReadSeeker) Read([]byte) (int, error)       { return 0, errTest }
+func (errReadSeeker) Seek(int64, int) (int64, error) { return 0, nil }
 
 // endpoint returns HTTP URL for given ctr. When params are present they will
 // be added after "?" joined by "&".

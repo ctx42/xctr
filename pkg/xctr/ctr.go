@@ -74,10 +74,17 @@ func WithCTRImgRm(ctr *CTR) { ctr.removeImage = true }
 
 // WithCTRKeepImage is an option for [NewCTR] keeping the image built from a
 // Dockerfile after [CTR.Terminate]. By default, a built image is removed when
-// its container terminates, and after a crash by the testcontainers reaper.
-// A kept image is not reaped either, so give it a fixed name with the
-// request's Repo and Tag.
+// the test run ends ([Sweep]) or its container terminates
+// ([WithCTROwnImage]), and after a crash by the testcontainers reaper. A kept
+// image is not reaped either, so give it a fixed name with the request's Repo
+// and Tag.
 func WithCTRKeepImage(ctr *CTR) { ctr.req.KeepImage = true }
+
+// WithCTROwnImage is an option for [NewCTR] building the image of a Dockerfile
+// request for this container alone, removed by [CTR.Terminate]. By default,
+// containers of identical Dockerfile requests share the image the first
+// [CTR.Start] in the process built, which [Sweep] removes.
+func WithCTROwnImage(ctr *CTR) { ctr.ownImage = true }
 
 // WithCTRStopTimeout is an option for [NewCTR] setting how long
 // [CTR.Terminate] waits for the container to exit after SIGTERM before it is
@@ -128,6 +135,9 @@ type CTR struct {
 	// When true and the container request is based on image it will be removed
 	// in [CTR.Terminate].
 	removeImage bool
+
+	// When true the image built from a Dockerfile is not shared.
+	ownImage bool
 
 	// Time [CTR.Terminate] waits after SIGTERM before killing the container.
 	stopTimeout time.Duration
@@ -871,13 +881,18 @@ func prepareRequest(
 		// testcontainers cannot print; a build whose log is wanted keeps the
 		// daemon's API default, the classic builder.
 		bld := meta.builder
-		lw := req.FromDockerfile.BuildLogWriter
-		logged := req.PrintBuildLog //nolint:staticcheck
-		if logged || (lw != nil && lw != io.Discard) {
+		if buildLogged(req) {
 			bld = ""
 		}
+
+		// The name labels the container, not the image, which containers
+		// of other tests may share.
+		labMap := maps.Clone(meta.labels)
+		delete(labMap, LabTestCtrName)
+		name := map[string]string{LabTestCtrName: meta.labels[LabTestCtrName]}
+		req.Labels = SetMissing(req.Labels, name)
+
 		orig := req.BuildOptionsModifier
-		labMap := meta.labels
 		req.BuildOptionsModifier = func(opts *client.ImageBuildOptions) {
 			if orig != nil {
 				orig(opts)
@@ -944,6 +959,8 @@ func prepareRequest(
 
 // Start prepares a copy of the configured request, so it may be called again
 // after [CTR.Terminate]; [CTR.Request] keeps returning the configured request.
+// A Dockerfile request runs the image an identical request built earlier in
+// the process, unless [WithCTROwnImage] is set.
 func (ctr *CTR) Start(ctx context.Context, env []string) error {
 	if ctr.dc != nil {
 		return ErrRunning
@@ -960,6 +977,11 @@ func (ctr *CTR) Start(ctx context.Context, env []string) error {
 		meta.builder = daemonBuilder(ctx)
 	}
 	ctr.runReq = prepareRequest(cloneReq(ctr.req), meta, env, ctr.log)
+	if key, ok := ctr.shareKey(env, meta); ok {
+		if err := ctr.useShared(ctx, key); err != nil {
+			return err
+		}
+	}
 	return ctr.startAndBind(ctx)
 }
 

@@ -32,6 +32,9 @@ const imgPrefix = "c42-tst-img-"
 // session's reaper still runs, when it was created or tagged within grace,
 // or when it is not marked for reaping. Images are removed by tag.
 //
+// Sweep also removes the images this process built for containers to share
+// (see [WithCTROwnImage]), whatever their age, unless a container uses them.
+//
 // Sweep lists containers and images, which is slow on a busy daemon, so xctr
 // never calls it; call it at the end of a test run:
 //
@@ -59,6 +62,7 @@ func Sweep(ctx context.Context, grace time.Duration) error {
 	// Images go after containers, which keep them in use.
 	ers := sweepContainers(ctx, cli, live, cutoff)
 	ers = errors.Join(ers, sweepImages(ctx, cli, live, cutoff))
+	ers = errors.Join(ers, dropShared(ctx, cli))
 	if ers != nil {
 		return fmt.Errorf("sweep: %w", ers)
 	}
@@ -162,18 +166,9 @@ func sweepImages(
 			continue
 		}
 		for _, ref := range sum.RepoTags {
-			if !strings.HasPrefix(ref, imgPrefix) {
-				continue
+			if strings.HasPrefix(ref, imgPrefix) {
+				ers = errors.Join(ers, untag(ctx, cli, ref))
 			}
-			rmOpts := client.ImageRemoveOptions{PruneChildren: true}
-			_, err = cli.ImageRemove(ctx, ref, rmOpts)
-			if err == nil || cerrdefs.IsNotFound(err) {
-				continue
-			}
-			if cerrdefs.IsConflict(err) {
-				continue // A container still uses the tag.
-			}
-			ers = errors.Join(ers, fmt.Errorf("remove image %s: %w", ref, err))
 		}
 	}
 	return ers
