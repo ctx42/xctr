@@ -6,7 +6,9 @@ package xctr
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +23,16 @@ import (
 
 	"github.com/ctx42/xctr/pkg/xctr/xctrtest"
 )
+
+// TestMain runs the tests, then removes what the reaper left behind in
+// earlier test runs.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if err := Sweep(context.Background(), time.Minute); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err)
+	}
+	os.Exit(code)
+}
 
 // ctrGone polls until the container with the given ID is no longer present,
 // failing the test if it is still present after the timeout. Container removal
