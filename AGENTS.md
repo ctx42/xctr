@@ -41,6 +41,12 @@ Single module `github.com/ctx42/xctr`; all code is in `pkg/xctr`.
   `WithCTRStopTimeout` sets a grace period: test containers are ephemeral and
   many PID 1s ignore SIGTERM, which cost the full 10 s default per container.
   Built images are removed by default; `WithCTRKeepImage` keeps them.
+- `Sweep` (`sweep.go`) removes what Ryuk missed: containers labelled
+  `LabTestCtrName` and `c42-tst-img-*` images (listed by name, never by label,
+  which is slow on large stores) that are marked for reaping, belong to a
+  session with no running reaper, and are older than the grace period (images
+  by last tag time). It is end-of-run only: nothing on the `Start`/`Terminate`
+  path may list or sweep, because test speed comes before leftover cleanup.
 - `CleanupTrait` (`cleanup_trait.go`) is embedded in `CTR` via the
   `hidCleanTrait` alias to keep the field unexported; cleanups run in reverse,
   once. `Start` registers `Terminate` as a cleanup.

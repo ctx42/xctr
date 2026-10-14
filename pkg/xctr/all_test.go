@@ -4,6 +4,7 @@
 package xctr
 
 import (
+	"context"
 	"errors"
 	"net"
 	"strings"
@@ -11,9 +12,14 @@ import (
 	"time"
 
 	"github.com/ctx42/testing/pkg/assert"
+	"github.com/ctx42/testing/pkg/must"
 	"github.com/ctx42/testing/pkg/tester"
 	"github.com/ctx42/testkit/pkg/dkrkit"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	tc "github.com/testcontainers/testcontainers-go"
+
+	"github.com/ctx42/xctr/pkg/xctr/xctrtest"
 )
 
 // ctrGone polls until the container with the given ID is no longer present,
@@ -161,3 +167,76 @@ var (
 	errTest      = errors.New("kit test error")
 	errTestOther = errors.New("kit test other error")
 )
+
+// dockerClient returns a Docker client closed when the test ends.
+func dockerClient(t tester.T) *client.Client {
+	t.Helper()
+	cli := must.Value(newDockerClient(t.Context()))
+	t.Cleanup(func() { _ = cli.Close() })
+	return cli
+}
+
+// createCtr creates, without starting it, a container from
+// [xctrtest.EchoServerRef] with the labels, and removes it when the test
+// ends. Returns the container ID.
+func createCtr(t tester.T, labels map[string]string) string {
+	t.Helper()
+	cli := dockerClient(t)
+	opts := client.ContainerCreateOptions{
+		Config: &container.Config{
+			Image:      xctrtest.EchoServerRef,
+			Entrypoint: []string{"tail", "-f", "/dev/null"},
+			Labels:     labels,
+		},
+	}
+	res := must.Value(cli.ContainerCreate(t.Context(), opts))
+	t.Cleanup(func() {
+		ctx := context.WithoutCancel(t.Context())
+		rmOpts := client.ContainerRemoveOptions{Force: true}
+		_, _ = cli.ContainerRemove(ctx, res.ID, rmOpts)
+	})
+	return res.ID
+}
+
+// startCtr creates a container as createCtr does and starts it.
+func startCtr(t tester.T, labels map[string]string) string {
+	t.Helper()
+	id := createCtr(t, labels)
+	opts := client.ContainerStartOptions{}
+	must.Value(dockerClient(t).ContainerStart(t.Context(), id, opts))
+	return id
+}
+
+// commitImg commits a container with the labels to a random xctr image
+// reference, removes the image when the test ends, and returns the reference.
+func commitImg(t tester.T, labels map[string]string) string {
+	t.Helper()
+	cli := dockerClient(t)
+	ref := RandRef()
+	id := createCtr(t, labels)
+	opts := client.ContainerCommitOptions{Reference: ref}
+	must.Value(cli.ContainerCommit(t.Context(), id, opts))
+	rmOpts := client.ContainerRemoveOptions{Force: true}
+	must.Value(cli.ContainerRemove(t.Context(), id, rmOpts))
+	t.Cleanup(func() {
+		ctx := context.WithoutCancel(t.Context())
+		imgOpts := client.ImageRemoveOptions{Force: true}
+		_, _ = cli.ImageRemove(ctx, ref, imgOpts)
+	})
+	return ref
+}
+
+// ctrExists returns true when the container with the ID exists.
+func ctrExists(t tester.T, id string) bool {
+	t.Helper()
+	opts := client.ContainerInspectOptions{}
+	_, err := dockerClient(t).ContainerInspect(t.Context(), id, opts)
+	return err == nil
+}
+
+// imgExists returns true when an image with the reference exists.
+func imgExists(t tester.T, ref string) bool {
+	t.Helper()
+	ims := dkrkit.NewT(t).ImgLs(dkrkit.WithImgLsFilter("reference=" + ref))
+	return ims.FindByRef(ref) != nil
+}

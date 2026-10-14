@@ -97,7 +97,7 @@ func RandName() string {
 	if _, err := rand.Read(buf); err != nil {
 		panic(err)
 	}
-	return "c42-tst-img-" + hex.EncodeToString(buf)
+	return imgPrefix + hex.EncodeToString(buf)
 }
 
 // RandTag returns a random Docker image tag. All returned strings are

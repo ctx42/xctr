@@ -60,6 +60,8 @@ import "github.com/ctx42/xctr/pkg/xctr"
   that collects container logs and optionally prints them.
 - `CleanupTrait` (`RegisterCleanup`, `Cleanup`) — reverse-order, run-once
   cleanup callbacks to embed in your own types.
+- `Sweep` — remove the containers and built images the testcontainers
+  reaper left behind in earlier test runs; call it from `TestMain`.
 - `Ref`, `ParseRef`, `RandRef`, `RandName`, `RandTag`, `RandNet`, `ShortID` —
   build, parse, and randomize image references, names, tags, network names,
   and IDs.
@@ -201,6 +203,28 @@ the testcontainers reaper removes it when the test process dies without
 cleaning up. `WithCTRKeepImage` keeps it; a kept image is not reaped either,
 so give it a fixed `Repo` and `Tag`. Images pulled by reference are kept
 unless `WithCTRImgRm` is set: removing them would force a pull on every run.
+
+The reaper (Ryuk) can still miss resources: it exits after a single pass, and
+it gives up on images when listing them takes longer than its 10 s request
+timeout, which happens on a busy daemon holding many images. `Sweep` removes
+what it left: xctr containers and built images of sessions whose reaper no
+longer runs, created or last tagged more than `grace` ago. Kept images are not
+marked for reaping, so `Sweep` leaves them alone too. `Sweep` lists containers
+and images, so nothing in xctr calls it; call it once at the end of a test run:
+
+```go
+func TestMain(m *testing.M) {
+	code := m.Run()
+	_ = xctr.Sweep(context.Background(), time.Minute)
+	os.Exit(code)
+}
+```
+
+The grace period protects runs that are still starting, since testcontainers
+builds an image before it starts the reaper. That gap is about a second, and
+testcontainers stops waiting for the reaper after 60 s, so a minute is enough.
+The calling run's own session is live while it sweeps, so `Sweep` removes only
+earlier runs' leftovers.
 
 Builds use BuildKit when the daemon prefers it (Docker 23 and newer), which
 skips the classic builder's per-label build steps. A build whose log is
