@@ -31,7 +31,9 @@ import "github.com/ctx42/xctr/pkg/xctr"
 - `NewCTR` / `Start` / `Terminate` — construct a container from a
   `tc.GenericContainerRequest` and manage its full lifecycle; the
   `WithCTRLogger` and `WithCTRImgRm` options attach a log consumer and remove
-  the image on `Terminate`.
+  the image on `Terminate`. `Terminate` kills the container at once, since
+  test containers are ephemeral; `WithCTRStopTimeout` gives it a grace period
+  after SIGTERM instead.
 - `ImageReq(ref)` — a container request for an image reference.
 - `ExposePort`, `AddFile`, `Setenv`, `SetLabel` — configure the request before
   `Start`; `CreateTemp` writes a host temp file removed on `Cleanup`.
@@ -73,6 +75,15 @@ import "github.com/ctx42/xctr/pkg/xctr"
 - A reachable Docker daemon (`DOCKER_HOST`, or the default local socket) —
   `xctr` is a thin layer over `testcontainers-go`, which drives Docker
   directly.
+
+Every test binary resolves the Docker host once, and on a local daemon
+testcontainers spends about half of that probing for Docker Desktop. Setting
+the socket explicitly skips the probe, saving ~150 ms per test package:
+
+```shell
+export DOCKER_HOST=unix:///var/run/docker.sock
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```
 
 ## Usage
 
@@ -181,6 +192,21 @@ not supported. `SetEnvCTREntrypoint(env)` with no command sets
 In addition to the `xdef` labels described above, `Start` sets the
 `dev.ctx42.test.ctr.name` label (`xctr.LabTestCtrName`) to the name passed to
 `NewCTR`.
+
+### Built images
+
+Images built from a Dockerfile are ephemeral. `Terminate` removes the image
+with its container, a `Start` that fails after the build removes it too, and
+the testcontainers reaper removes it when the test process dies without
+cleaning up. `WithCTRKeepImage` keeps it; a kept image is not reaped either,
+so give it a fixed `Repo` and `Tag`. Images pulled by reference are kept
+unless `WithCTRImgRm` is set: removing them would force a pull on every run.
+
+Builds use BuildKit when the daemon prefers it (Docker 23 and newer), which
+skips the classic builder's per-label build steps. A build whose log is
+printed — `C42_XCTR_BUILD_LOG`, or a request with a `BuildLogWriter` — uses
+the classic builder instead, since the API streams BuildKit progress in a
+binary form. A `Version` set by the request's `BuildOptionsModifier` wins.
 
 ## Testing helpers (xctrtest)
 

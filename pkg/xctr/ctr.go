@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/ctx42/gitaid/pkg/gitaid"
@@ -25,6 +26,7 @@ import (
 	"github.com/ctx42/xdef/pkg/xdef"
 	"github.com/distribution/reference"
 	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/build"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 	tc "github.com/testcontainers/testcontainers-go"
@@ -70,6 +72,22 @@ type Option func(*CTR)
 // [CTR.Terminate].
 func WithCTRImgRm(ctr *CTR) { ctr.removeImage = true }
 
+// WithCTRKeepImage is an option for [NewCTR] keeping the image built from a
+// Dockerfile after [CTR.Terminate]. By default, a built image is removed when
+// its container terminates, and after a crash by the testcontainers reaper.
+// A kept image is not reaped either, so give it a fixed name with the
+// request's Repo and Tag.
+func WithCTRKeepImage(ctr *CTR) { ctr.req.KeepImage = true }
+
+// WithCTRStopTimeout is an option for [NewCTR] setting how long
+// [CTR.Terminate] waits for the container to exit after SIGTERM before it is
+// killed. The default is zero: test containers are ephemeral, so they are
+// killed at once instead of waiting out a grace period their main process
+// may ignore.
+func WithCTRStopTimeout(d time.Duration) Option {
+	return func(ctr *CTR) { ctr.stopTimeout = d }
+}
+
 // WithCTRLogger is an option for [NewCTR] setting a custom log consumer. The
 // consumer is attached whether or not [EnvCTRLog] is set, unless the request
 // already has a log consumer config.
@@ -110,6 +128,9 @@ type CTR struct {
 	// When true and the container request is based on image it will be removed
 	// in [CTR.Terminate].
 	removeImage bool
+
+	// Time [CTR.Terminate] waits after SIGTERM before killing the container.
+	stopTimeout time.Duration
 
 	// Container configuration as seen from the host perspective.
 	cfgHost map[string]string
@@ -571,7 +592,8 @@ func (ctr *CTR) Unpause(ctx context.Context) error {
 	return nil
 }
 
-// Terminate terminates the started container. Returns [ErrNotStarted] when the
+// Terminate terminates the started container. It kills the container unless
+// [WithCTRStopTimeout] gave it a grace period. Returns [ErrNotStarted] when the
 // container was never started.
 func (ctr *CTR) Terminate(ctx context.Context) (err error) {
 	if ctr.dc == nil {
@@ -591,7 +613,8 @@ func (ctr *CTR) Terminate(ctx context.Context) (err error) {
 	// Mark terminated only after the underlying terminate succeeds (or fails
 	// with an ignorable error), so a real failure leaves the container bound
 	// and a retry can try again instead of reporting success.
-	if err = tcc.Terminate(ctx); handleErr(err) {
+	stop := tc.StopTimeout(ctr.stopTimeout)
+	if err = tcc.Terminate(ctx, stop); handleErr(err) {
 		return fmt.Errorf("terminate: %w", err)
 	}
 	ctr.dc = nil
@@ -697,10 +720,12 @@ func (ctr *CTR) FormatInfoLine(format string, a ...any) string {
 	return fmt.Sprintf("\t>| (%s) [%s] > %s\n", id, ctr.name, line)
 }
 
-// startMeta holds provenance labels and default container env stamped at Start.
+// startMeta holds provenance labels and default container env stamped at
+// Start, and the builder Dockerfile builds request.
 type startMeta struct {
-	labels map[string]string
-	env    map[string]string
+	labels  map[string]string
+	env     map[string]string
+	builder build.BuilderVersion
 }
 
 // scmInfo is SCM provenance used when stamping a container.
@@ -729,6 +754,66 @@ func scmFromGit(ctx context.Context) scmInfo {
 		scm.hash = val
 	}
 	return scm
+}
+
+// scmCache holds the scmInfo resolved by cachedSCM per working
+// directory. It cannot change while a test binary runs, and resolving it costs
+// three git subprocesses per [CTR.Start].
+var (
+	scmCache   = make(map[string]scmInfo)
+	scmCacheMx sync.Mutex
+)
+
+// cachedSCM returns what scmFromGit resolves for the working directory,
+// running it once per directory. A lookup cut short by a cancelled context is
+// not cached.
+func cachedSCM(ctx context.Context) scmInfo {
+	dir, err := os.Getwd()
+	if err != nil {
+		return scmFromGit(ctx)
+	}
+	scmCacheMx.Lock()
+	defer scmCacheMx.Unlock()
+	if scm, ok := scmCache[dir]; ok {
+		return scm
+	}
+	scm := scmFromGit(ctx)
+	if ctx.Err() == nil {
+		scmCache[dir] = scm
+	}
+	return scm
+}
+
+// daemonBld holds the builder the Docker daemon prefers, resolved by
+// daemonBuilder once per process.
+var (
+	daemonBld   build.BuilderVersion
+	daemonBldOK bool
+	daemonBldMx sync.Mutex
+)
+
+// daemonBuilder returns the builder the Docker daemon prefers, as its ping
+// reports it: BuildKit on Docker 23 and newer. The daemon still runs the
+// classic builder for API builds that do not ask for one. Returns an empty
+// version, the API default, when the daemon cannot be asked; that is not
+// cached.
+func daemonBuilder(ctx context.Context) build.BuilderVersion {
+	daemonBldMx.Lock()
+	defer daemonBldMx.Unlock()
+	if daemonBldOK {
+		return daemonBld
+	}
+	cli, err := newDockerClient(ctx)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = cli.Close() }()
+	png, err := cli.Ping(ctx, client.PingOptions{})
+	if err != nil {
+		return ""
+	}
+	daemonBld, daemonBldOK = png.BuilderVersion, true
+	return daemonBld
 }
 
 // buildMeta builds [startMeta] from env, container name, and SCM info.
@@ -774,20 +859,33 @@ func prepareRequest(
 		if req.Tag == "" {
 			req.Tag = RandTag()
 		}
-		orig := req.BuildOptionsModifier
-		labMap := meta.labels
-		req.BuildOptionsModifier = func(opts *client.ImageBuildOptions) {
-			if orig != nil {
-				orig(opts)
-			}
-			opts.Labels = SetMissing(opts.Labels, labMap)
-		}
 		buildArgs := map[string]*string{
 			xdef.EnvBldDate: new(meta.env[xdef.EnvBldDate]),
 		}
 		req.BuildArgs = SetMissing(req.BuildArgs, buildArgs)
 		if ring.EnvGet(env, EnvCTRBuildLog) == "true" {
 			req.FromDockerfile.BuildLogWriter = os.Stdout
+		}
+
+		// The API streams BuildKit progress as binary trace records, which
+		// testcontainers cannot print; a build whose log is wanted keeps the
+		// daemon's API default, the classic builder.
+		bld := meta.builder
+		lw := req.FromDockerfile.BuildLogWriter
+		logged := req.PrintBuildLog //nolint:staticcheck
+		if logged || (lw != nil && lw != io.Discard) {
+			bld = ""
+		}
+		orig := req.BuildOptionsModifier
+		labMap := meta.labels
+		req.BuildOptionsModifier = func(opts *client.ImageBuildOptions) {
+			if orig != nil {
+				orig(opts)
+			}
+			if opts.Version == "" {
+				opts.Version = bld
+			}
+			opts.Labels = SetMissing(opts.Labels, labMap)
 		}
 	} else {
 		req.Labels = SetMissing(req.Labels, meta.labels)
@@ -857,23 +955,32 @@ func (ctr *CTR) Start(ctx context.Context, env []string) error {
 		}
 	}
 
-	meta := buildMeta(env, ctr.name, scmFromGit(ctx))
+	meta := buildMeta(env, ctr.name, cachedSCM(ctx))
+	if ctr.req.ShouldBuildImage() {
+		meta.builder = daemonBuilder(ctx)
+	}
 	ctr.runReq = prepareRequest(cloneReq(ctr.req), meta, env, ctr.log)
 	return ctr.startAndBind(ctx)
 }
 
 // startAndBind runs GenericContainer and binds the result onto CTR.
 func (ctr *CTR) startAndBind(ctx context.Context) error {
+	stop := tc.StopTimeout(ctr.stopTimeout)
 	started, err := tc.GenericContainer(ctx, ctr.runReq)
 	if err != nil {
 		// A container that was created but failed to start is still returned
-		// and must be terminated, or it keeps running.
+		// and must be terminated, or it keeps running; terminating it also
+		// removes the image built for it. Without a container nothing else
+		// removes that image.
 		err = fmt.Errorf("start: %w", err)
-		return errors.Join(err, tc.TerminateContainer(started))
+		if started == nil {
+			return errors.Join(err, ctr.removeBuiltImage(ctx))
+		}
+		return errors.Join(err, tc.TerminateContainer(started, stop))
 	}
 	dc, ok := started.(*tc.DockerContainer)
 	if !ok {
-		_ = started.Terminate(ctx)
+		_ = started.Terminate(ctx, stop)
 		return errors.New("not *tc.DockerContainer instance")
 	}
 	ctr.dc = dc
@@ -889,6 +996,16 @@ func (ctr *CTR) startAndBind(ctx context.Context) error {
 	}
 	ctr.RegisterCleanup(ctr.Terminate)
 	return nil
+}
+
+// removeBuiltImage removes the image built for the run request unless the
+// request keeps it. A build that never produced the image is not an error.
+func (ctr *CTR) removeBuiltImage(ctx context.Context) error {
+	req := ctr.runReq
+	if !req.ShouldBuildImage() || req.ShouldKeepBuiltImage() {
+		return nil
+	}
+	return deleteImage(context.WithoutCancel(ctx), req.Repo+":"+req.Tag)
 }
 
 // bindStarted records runtime identity after the container has been created,

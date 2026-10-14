@@ -38,6 +38,39 @@ func ctrGone(t tester.T, id string) {
 	}
 }
 
+// firstLine polls lc until it has received a line, and returns that line
+// with its newline, or what lc holds after two seconds. The log consumer
+// receives lines asynchronously, so a container can be ready before its
+// first line arrives.
+func firstLine(lc *Logger) string {
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		have := lc.Print()
+		if line, _, ok := strings.Cut(have, "\n"); ok {
+			return line + "\n"
+		}
+		if time.Now().After(deadline) {
+			return have
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// resetDaemonBuilder clears the process-wide daemon builder cache for the
+// test and restores it when the test ends.
+func resetDaemonBuilder(t tester.T) {
+	t.Helper()
+	daemonBldMx.Lock()
+	bld, ok := daemonBld, daemonBldOK
+	daemonBld, daemonBldOK = "", false
+	daemonBldMx.Unlock()
+	t.Cleanup(func() {
+		daemonBldMx.Lock()
+		defer daemonBldMx.Unlock()
+		daemonBld, daemonBldOK = bld, ok
+	})
+}
+
 // endpoint returns HTTP URL for given ctr. When params are present they will
 // be added after "?" joined by "&".
 func endpoint(ctr *CTR, params ...string) string {

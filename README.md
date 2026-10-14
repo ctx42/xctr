@@ -290,7 +290,8 @@ ctr.Exec(ctx, "rm", "-rf", "/data").Err()   // not allowed: rm -rf /data
 single run without touching code:
 
 - `C42_XCTR_LOG=true` — print container logs.
-- `C42_XCTR_BUILD_LOG=true` — print Dockerfile build logs.
+- `C42_XCTR_BUILD_LOG=true` — print Dockerfile build logs (builds then use the
+  classic builder, whose log is readable).
 - `C42_XCTR_ENTRYPOINT="tail -f /dev/null"` — override the entrypoint, e.g.
   to keep a crashing service alive while you poke at it.
 

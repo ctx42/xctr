@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/ctx42/testing/pkg/assert"
 	"github.com/ctx42/testing/pkg/must"
@@ -21,6 +22,17 @@ import (
 
 // errTest is a sentinel error used in tests.
 var errTest = errors.New("test error")
+
+func Test_readyHTTP(t *testing.T) {
+	// --- When ---
+	have := readyHTTP("80/tcp")
+
+	// --- Then ---
+	assert.Equal(t, "80", have.Port.Port())
+	assert.Equal(t, 10*time.Millisecond, have.PollInterval)
+	want := `HTTP GET request on port 80 path "/"`
+	assert.Equal(t, want, have.String())
+}
 
 func Test_ImageReq(t *testing.T) {
 	t.Run("setup", func(t *testing.T) {

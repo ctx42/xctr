@@ -35,6 +35,16 @@ const (
 //go:embed data/echo/Dockerfile
 var dockerfile []byte
 
+// readyHTTP waits until the server answers an HTTP request on the host port
+// mapped to port. It needs no shell probe inside the container on every poll,
+// as [wait.ForListeningPort] does, and unlike that strategy's host-only mode
+// it does not take a port proxy accepting the connection for the server.
+func readyHTTP(port string) *wait.HTTPStrategy {
+	return wait.ForHTTP("/").
+		WithPort(port).
+		WithPollInterval(10 * time.Millisecond)
+}
+
 // ImageReq returns a container request based on [EchoServerRef].
 func ImageReq() tc.GenericContainerRequest {
 	return tc.GenericContainerRequest{
@@ -42,7 +52,7 @@ func ImageReq() tc.GenericContainerRequest {
 		ContainerRequest: tc.ContainerRequest{
 			Image:        EchoServerRef,
 			ExposedPorts: []string{"80/tcp"},
-			WaitingFor: wait.ForListeningPort("80/tcp").
+			WaitingFor: readyHTTP("80/tcp").
 				WithStartupTimeout(10 * time.Second),
 			ConfigModifier: func(cfg *container.Config) {
 				cfg.Hostname = "echo"
@@ -70,7 +80,7 @@ func DockerfileReq() tc.GenericContainerRequest {
 				},
 			},
 			ExposedPorts: []string{"80/tcp"},
-			WaitingFor:   wait.ForListeningPort("80/tcp"),
+			WaitingFor:   readyHTTP("80/tcp"),
 			ConfigModifier: func(cfg *container.Config) {
 				cfg.Hostname = "echo"
 			},

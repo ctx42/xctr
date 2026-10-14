@@ -20,19 +20,27 @@ Single module `github.com/ctx42/xctr`; all code is in `pkg/xctr`.
 - `xctr.go` — the `Container` interface, split into `Manager` (lifecycle),
   `Info` (read-only state), and `Actions` (exec, file I/O, env/labels,
   read-only/whitelist). `CTR` (`ctr.go`) is the only implementation.
-- `CTR.Start` pipeline (`ctr.go`): `scmFromGit` (git via `gitaid`, falling
-  back to `xdef` placeholders) → `buildMeta` (pure) → `prepareRequest` (pure:
-  stamps OCI labels/env with `SetMissing` so caller values win; Dockerfile
-  builds get labels via `BuildOptionsModifier` plus build args and a random
-  repo/tag; applies `C42_XCTR_*` env switches) → `startAndBind` →
-  `bindStarted` (fills `cfgHost`/`cfgGuest` with `HOST` and `PORT_<i>` keys,
-  indexed by `ExposedPorts` order). `prepareRequest` works on a `cloneReq`
-  copy stored in `runReq`; `req` keeps the configured request, which
-  `Request` returns, so `Start` can run again after `Terminate`. Keep
+- `CTR.Start` pipeline (`ctr.go`): `cachedSCM` (`scmFromGit` once per working
+  directory: git via `gitaid`, falling back to `xdef` placeholders) →
+  `buildMeta` (pure) → `daemonBuilder` for Dockerfile requests (the daemon's
+  preferred builder from its ping, once per process; BuildKit on Docker 23+) →
+  `prepareRequest` (pure: stamps OCI labels/env with `SetMissing` so caller
+  values win; Dockerfile builds get labels and the builder version via
+  `BuildOptionsModifier`, keeping the classic builder when a build log is
+  printed, plus build args and a random repo/tag; applies `C42_XCTR_*` env
+  switches) → `startAndBind` (on failure without a container, `removeBuiltImage`
+  drops the built image) → `bindStarted` (fills `cfgHost`/`cfgGuest` with `HOST`
+  and `PORT_<i>` keys, indexed by `ExposedPorts` order). `prepareRequest` works
+  on a `cloneReq` copy stored in `runReq`; `req` keeps the configured request,
+  which `Request` returns, so `Start` can run again after `Terminate`. Keep
   `buildMeta`/`prepareRequest` free of git and Docker calls so they stay
   unit-testable.
 - `env []string` passed to `Start` is an `os.Environ()`-shaped slice read with
   `ring.EnvGet`; the package never reads the process environment directly.
+- `Terminate` kills the container (`tc.StopTimeout(0)`) unless
+  `WithCTRStopTimeout` sets a grace period: test containers are ephemeral and
+  many PID 1s ignore SIGTERM, which cost the full 10 s default per container.
+  Built images are removed by default; `WithCTRKeepImage` keeps them.
 - `CleanupTrait` (`cleanup_trait.go`) is embedded in `CTR` via the
   `hidCleanTrait` alias to keep the field unexported; cleanups run in reverse,
   once. `Start` registers `Terminate` as a cleanup.

@@ -27,6 +27,7 @@ import (
 	"github.com/ctx42/testkit/pkg/oskit"
 	"github.com/ctx42/testkit/pkg/randkit"
 	"github.com/ctx42/xdef/pkg/xdef"
+	"github.com/moby/moby/api/types/build"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -133,6 +134,28 @@ func Test_WithCTRImgRm(t *testing.T) {
 	assert.True(t, ctr.removeImage)
 }
 
+func Test_WithCTRKeepImage(t *testing.T) {
+	// --- Given ---
+	ctr := &CTR{}
+
+	// --- When ---
+	WithCTRKeepImage(ctr)
+
+	// --- Then ---
+	assert.True(t, ctr.req.KeepImage)
+}
+
+func Test_WithCTRStopTimeout(t *testing.T) {
+	// --- Given ---
+	ctr := &CTR{}
+
+	// --- When ---
+	WithCTRStopTimeout(3 * time.Second)(ctr)
+
+	// --- Then ---
+	assert.Equal(t, 3*time.Second, ctr.stopTimeout)
+}
+
 func Test_NewCTR(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		// --- Given ---
@@ -153,6 +176,7 @@ func Test_NewCTR(t *testing.T) {
 		assert.Nil(t, ctr.dc)
 		assert.Equal(t, xctrtest.EchoServerRef, ctr.req.Image)
 		assert.False(t, ctr.removeImage)
+		assert.Equal(t, time.Duration(0), ctr.stopTimeout)
 		assert.Nil(t, ctr.cfgHost)
 		assert.Nil(t, ctr.cfgGuest)
 	})
@@ -1770,6 +1794,45 @@ func Test_CTR_Terminate(t *testing.T) {
 		assert.Nil(t, ctr.dc)
 	})
 
+	t.Run("kills by default", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR("tail", ImageReq(xctrtest.EchoServerRef))
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+		start := time.Now()
+
+		// --- When ---
+		err := ctr.Terminate(ctx)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Smaller(t, 5*time.Second, time.Since(start))
+		ctrGone(t, ctr.ID())
+	})
+
+	t.Run("grace period", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		req := ImageReq(xctrtest.EchoServerRef)
+		ctr := NewCTR("tail", req, WithCTRStopTimeout(2*time.Second))
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+		start := time.Now()
+
+		// --- When ---
+		err := ctr.Terminate(ctx)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.GreaterOrEqual(t, 2*time.Second, time.Since(start))
+		ctrGone(t, ctr.ID())
+	})
+
 	t.Run("closes the exec client", func(t *testing.T) {
 		// --- Given ---
 		ctx := t.Context()
@@ -1800,12 +1863,53 @@ func Test_CTR_Terminate(t *testing.T) {
 		assert.ErrorIs(t, ErrNotStarted, err)
 	})
 
+	t.Run("removes built image", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR("built", xctrtest.DockerfileReq())
+		assert.NoError(t, ctr.Start(ctx, nil))
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+		ref := ctr.Reference()
+
+		// --- When ---
+		err := ctr.Terminate(ctx)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		ims := dkrkit.NewT(t).ImgLs(dkrkit.WithImgLsFilter("reference=" + ref))
+		assert.Nil(t, ims.FindByRef(ref))
+	})
+
+	t.Run("keep built image", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		req := xctrtest.DockerfileReq()
+		ctr := NewCTR("keep", req, WithCTRKeepImage)
+		assert.NoError(t, ctr.Start(ctx, nil))
+		ref := ctr.Reference()
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+			dkrkit.NewT(t).ImgRm(ref)
+		})
+
+		// --- When ---
+		err := ctr.Terminate(ctx)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		ims := dkrkit.NewT(t).ImgLs(dkrkit.WithImgLsFilter("reference=" + ref))
+		assert.NotNil(t, ims.FindByRef(ref))
+	})
+
 	t.Run("remove image", func(t *testing.T) {
 		// --- Given ---
 		ctx := t.Context()
 		imgRef, imgID := dkrkit.NewT(t).Build(
 			dkrkit.WithBuildPth("xctrtest/data/simple/Dockerfile"),
 		)
+		byRef := dkrkit.WithImgLsFilter("reference=" + imgRef)
 
 		req := tc.GenericContainerRequest{
 			Started: true,
@@ -1818,7 +1922,7 @@ func Test_CTR_Terminate(t *testing.T) {
 		t.Cleanup(func() {
 			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
 		})
-		assert.NotNil(t, dkrkit.NewT(t).ImgLs().FindByID(imgID))
+		assert.NotNil(t, dkrkit.NewT(t).ImgLs(byRef).FindByID(imgID))
 		assert.NotNil(t, must.Value(dkrkit.NewT(t).CtrPs().FindByID(ctr.ID())))
 
 		// --- When ---
@@ -1826,7 +1930,7 @@ func Test_CTR_Terminate(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Nil(t, dkrkit.NewT(t).ImgLs().FindByID(imgID))
+		assert.Nil(t, dkrkit.NewT(t).ImgLs(byRef).FindByID(imgID))
 		ctrGone(t, ctr.ID())
 		assert.Nil(t, ctr.dc)
 	})
@@ -1838,13 +1942,14 @@ func Test_deleteImage(t *testing.T) {
 		imgRef, imgID := dkrkit.NewT(t).Build(
 			dkrkit.WithBuildPth("xctrtest/data/simple/Dockerfile"),
 		)
+		byRef := dkrkit.WithImgLsFilter("reference=" + imgRef)
 
 		// --- When ---
 		err := deleteImage(t.Context(), "docker.io/library/"+imgRef)
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Nil(t, dkrkit.NewT(t).ImgLs().FindByID(imgID))
+		assert.Nil(t, dkrkit.NewT(t).ImgLs(byRef).FindByID(imgID))
 	})
 }
 
@@ -1967,6 +2072,129 @@ func Test_scmFromGit(t *testing.T) {
 	assert.NotEmpty(t, have.repo)
 	assert.NotEmpty(t, have.rev)
 	assert.NotEmpty(t, have.hash)
+}
+
+func Test_cachedSCM(t *testing.T) {
+	t.Run("cached", func(t *testing.T) {
+		// --- Given ---
+		dir := must.Value(os.Getwd())
+		want := scmInfo{repo: "repo", rev: "rev", hash: "hash"}
+		scmCacheMx.Lock()
+		orig, ok := scmCache[dir]
+		scmCache[dir] = want
+		scmCacheMx.Unlock()
+		t.Cleanup(func() {
+			scmCacheMx.Lock()
+			defer scmCacheMx.Unlock()
+			delete(scmCache, dir)
+			if ok {
+				scmCache[dir] = orig
+			}
+		})
+
+		// --- When ---
+		have := cachedSCM(t.Context())
+
+		// --- Then ---
+		assert.Equal(t, want, have)
+	})
+
+	t.Run("resolves and caches", func(t *testing.T) {
+		// --- Given ---
+		dir := must.Value(os.Getwd())
+		scmCacheMx.Lock()
+		delete(scmCache, dir)
+		scmCacheMx.Unlock()
+
+		// --- When ---
+		have := cachedSCM(t.Context())
+
+		// --- Then ---
+		assert.Equal(t, scmFromGit(t.Context()), have)
+		scmCacheMx.Lock()
+		defer scmCacheMx.Unlock()
+		assert.Equal(t, have, scmCache[dir])
+	})
+
+	t.Run("cancelled context not cached", func(t *testing.T) {
+		// --- Given ---
+		dir := must.Value(os.Getwd())
+		scmCacheMx.Lock()
+		delete(scmCache, dir)
+		scmCacheMx.Unlock()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		// --- When ---
+		cachedSCM(ctx)
+
+		// --- Then ---
+		scmCacheMx.Lock()
+		defer scmCacheMx.Unlock()
+		_, has := scmCache[dir]
+		assert.False(t, has)
+	})
+}
+
+func Test_daemonBuilder(t *testing.T) {
+	t.Run("asks the daemon", func(t *testing.T) {
+		// --- Given ---
+		resetDaemonBuilder(t)
+
+		// --- When ---
+		have := daemonBuilder(t.Context())
+
+		// --- Then ---
+		assert.NotEmpty(t, have)
+		assert.True(t, daemonBldOK)
+	})
+
+	t.Run("cached", func(t *testing.T) {
+		// --- Given ---
+		resetDaemonBuilder(t)
+		daemonBld, daemonBldOK = build.BuilderV1, true
+
+		// --- When ---
+		have := daemonBuilder(t.Context())
+
+		// --- Then ---
+		assert.Equal(t, build.BuilderV1, have)
+	})
+
+	t.Run("error - docker client", func(t *testing.T) {
+		// --- Given ---
+		resetDaemonBuilder(t)
+		orig := newDockerClient
+		t.Cleanup(func() { newDockerClient = orig })
+		newDockerClient = func(context.Context) (*client.Client, error) {
+			return nil, errTest
+		}
+
+		// --- When ---
+		have := daemonBuilder(t.Context())
+
+		// --- Then ---
+		assert.Equal(t, build.BuilderVersion(""), have)
+		assert.False(t, daemonBldOK)
+	})
+
+	t.Run("error - ping", func(t *testing.T) {
+		// --- Given ---
+		resetDaemonBuilder(t)
+		orig := newDockerClient
+		t.Cleanup(func() { newDockerClient = orig })
+		newDockerClient = func(context.Context) (*client.Client, error) {
+			pth := filepath.Join(t.TempDir(), "docker.sock")
+			return client.New(client.WithHost("unix://" + pth))
+		}
+
+		// --- When ---
+		have := daemonBuilder(t.Context())
+
+		// --- Then ---
+		assert.Equal(t, build.BuilderVersion(""), have)
+		assert.False(t, daemonBldOK)
+	})
 }
 
 func Test_buildMeta(t *testing.T) {
@@ -2198,6 +2426,87 @@ func Test_prepareRequest(t *testing.T) {
 		have.BuildOptionsModifier(opts)
 		assert.Equal(t, "abc", opts.Labels["test"])
 		assert.Equal(t, "r", opts.Labels[xdef.LabImgSrc])
+	})
+
+	t.Run("builder from meta", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.DockerfileReq()
+		meta := buildMeta(nil, "echo", scmInfo{})
+		meta.builder = build.BuilderBuildKit
+
+		// --- When ---
+		have := prepareRequest(req, meta, nil, nil)
+
+		// --- Then ---
+		opts := &client.ImageBuildOptions{}
+		have.BuildOptionsModifier(opts)
+		assert.Equal(t, build.BuilderBuildKit, opts.Version)
+	})
+
+	t.Run("caller builder wins", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.DockerfileReq()
+		req.BuildOptionsModifier = func(opts *client.ImageBuildOptions) {
+			opts.Version = build.BuilderV1
+		}
+		meta := buildMeta(nil, "echo", scmInfo{})
+		meta.builder = build.BuilderBuildKit
+
+		// --- When ---
+		have := prepareRequest(req, meta, nil, nil)
+
+		// --- Then ---
+		opts := &client.ImageBuildOptions{}
+		have.BuildOptionsModifier(opts)
+		assert.Equal(t, build.BuilderV1, opts.Version)
+	})
+
+	t.Run("build log keeps API default builder", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.DockerfileReq()
+		meta := buildMeta(nil, "echo", scmInfo{})
+		meta.builder = build.BuilderBuildKit
+		env := SetEnvCTRBuildLog(nil)
+
+		// --- When ---
+		have := prepareRequest(req, meta, env, nil)
+
+		// --- Then ---
+		opts := &client.ImageBuildOptions{}
+		have.BuildOptionsModifier(opts)
+		assert.Equal(t, build.BuilderVersion(""), opts.Version)
+	})
+
+	t.Run("build log writer keeps API default builder", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.DockerfileReq()
+		req.FromDockerfile.BuildLogWriter = &bytes.Buffer{}
+		meta := buildMeta(nil, "echo", scmInfo{})
+		meta.builder = build.BuilderBuildKit
+
+		// --- When ---
+		have := prepareRequest(req, meta, nil, nil)
+
+		// --- Then ---
+		opts := &client.ImageBuildOptions{}
+		have.BuildOptionsModifier(opts)
+		assert.Equal(t, build.BuilderVersion(""), opts.Version)
+	})
+
+	t.Run("discarded build log uses meta builder", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.DockerfileReq()
+		req.FromDockerfile.BuildLogWriter = io.Discard
+		meta := buildMeta(nil, "echo", scmInfo{})
+		meta.builder = build.BuilderBuildKit
+
+		// --- When ---
+		have := prepareRequest(req, meta, nil, nil)
+
+		// --- Then ---
+		opts := &client.ImageBuildOptions{}
+		have.BuildOptionsModifier(opts)
+		assert.Equal(t, build.BuilderBuildKit, opts.Version)
 	})
 
 	t.Run("does not override existing request env", func(t *testing.T) {
@@ -2439,7 +2748,8 @@ func Test_CTR_Start(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "Listening on port 80.\n", lc.Print())
+		// The readiness probe's request is logged after this line.
+		assert.Equal(t, "Listening on port 80.\n", firstLine(lc))
 		assert.Equal(t, ctr.ID(), lc.cid)
 	})
 
@@ -2470,6 +2780,33 @@ func Test_CTR_Start(t *testing.T) {
 		assert.Equal(t, ctr.dc.GetContainerID(), ctr.ID())
 		assert.NotNil(t, ctr.Request().WaitingFor)
 		assert.Nil(t, ctr.Request().Entrypoint)
+	})
+
+	t.Run("from Dockerfile with BuildKit", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		ctr := NewCTR(t.Name(), xctrtest.DockerfileReq())
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		err := ctr.Start(ctx, nil)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		cli := xctrtest.NewClient(t)
+		img := must.Value(cli.ImageInspect(ctx, ctr.Reference()))
+		assert.NotEmpty(t, img.Config.Labels["org.testcontainers.sessionId"])
+		assert.Equal(t, t.Name(), img.Config.Labels[LabTestCtrName])
+
+		// The classic builder records every build label as a history step.
+		hist := must.Value(cli.ImageHistory(ctx, ctr.Reference()))
+		var steps []string
+		for _, itm := range hist.Items {
+			steps = append(steps, itm.CreatedBy)
+		}
+		assert.NotContain(t, "LABEL ", strings.Join(steps, "\n"))
 	})
 
 	t.Run("restart from Dockerfile", func(t *testing.T) {
@@ -2557,6 +2894,7 @@ func Test_CTR_Start(t *testing.T) {
 		imgRef, imgID := dkrkit.NewT(t).Build(
 			dkrkit.WithBuildPth("xctrtest/data/simple/Dockerfile"),
 		)
+		byRef := dkrkit.WithImgLsFilter("reference=" + imgRef)
 		req := tc.GenericContainerRequest{
 			Started: true,
 			ContainerRequest: tc.ContainerRequest{
@@ -2577,7 +2915,50 @@ func Test_CTR_Start(t *testing.T) {
 
 		// --- Then ---
 		assert.ErrorContain(t, "mapped port 80/tcp", err)
-		assert.Nil(t, dkrkit.NewT(t).ImgLs().FindByID(imgID))
+		assert.Nil(t, dkrkit.NewT(t).ImgLs(byRef).FindByID(imgID))
+	})
+
+	t.Run("error - build fails", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		req := xctrtest.DockerfileReq()
+		dockerfile := "FROM " + xctrtest.EchoServerRef + "\nRUN exit 3\n"
+		req.ContextArchive = MustDockerfileArchive([]byte(dockerfile))
+		ctr := NewCTR(t.Name(), req)
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		err := ctr.Start(ctx, nil)
+
+		// --- Then ---
+		assert.ErrorContain(t, "exit code: 3", err)
+		ref := ctr.runReq.Repo + ":" + ctr.runReq.Tag
+		ims := dkrkit.NewT(t).ImgLs(dkrkit.WithImgLsFilter("reference=" + ref))
+		assert.Nil(t, ims.FindByRef(ref))
+	})
+
+	t.Run("error - create removes built image", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		req := xctrtest.DockerfileReq()
+		req.HostConfigModifier = func(hc *container.HostConfig) {
+			hc.Memory = 1
+		}
+		ctr := NewCTR(t.Name(), req)
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		err := ctr.Start(ctx, nil)
+
+		// --- Then ---
+		assert.ErrorContain(t, "container create", err)
+		ref := ctr.runReq.Repo + ":" + ctr.runReq.Tag
+		ims := dkrkit.NewT(t).ImgLs(dkrkit.WithImgLsFilter("reference=" + ref))
+		assert.Nil(t, ims.FindByRef(ref))
 	})
 
 	t.Run("error - already started", func(t *testing.T) {
@@ -2596,5 +2977,68 @@ func Test_CTR_Start(t *testing.T) {
 		// --- Then ---
 		assert.ErrorIs(t, ErrRunning, err)
 		assert.Equal(t, id, ctr.ID())
+	})
+}
+
+func Test_CTR_removeBuiltImage(t *testing.T) {
+	t.Run("image request", func(t *testing.T) {
+		// --- Given ---
+		ctr := &CTR{runReq: xctrtest.ImageReq()}
+
+		// --- When ---
+		err := ctr.removeBuiltImage(t.Context())
+
+		// --- Then ---
+		assert.NoError(t, err)
+	})
+
+	t.Run("removes built image", func(t *testing.T) {
+		// --- Given ---
+		ref, _ := dkrkit.NewT(t).Build(
+			dkrkit.WithBuildPth("xctrtest/data/simple/Dockerfile"),
+		)
+		req := xctrtest.DockerfileReq()
+		req.Repo, req.Tag, _ = strings.Cut(ref, ":")
+		ctr := &CTR{runReq: req}
+
+		// --- When ---
+		err := ctr.removeBuiltImage(t.Context())
+
+		// --- Then ---
+		assert.NoError(t, err)
+		ims := dkrkit.NewT(t).ImgLs(dkrkit.WithImgLsFilter("reference=" + ref))
+		assert.Nil(t, ims.FindByRef(ref))
+	})
+
+	t.Run("kept image", func(t *testing.T) {
+		// --- Given ---
+		ref, _ := dkrkit.NewT(t).Build(
+			dkrkit.WithBuildPth("xctrtest/data/simple/Dockerfile"),
+		)
+		req := xctrtest.DockerfileReq()
+		req.Repo, req.Tag, _ = strings.Cut(ref, ":")
+		req.KeepImage = true
+		ctr := &CTR{runReq: req}
+
+		// --- When ---
+		err := ctr.removeBuiltImage(t.Context())
+
+		// --- Then ---
+		assert.NoError(t, err)
+		ims := dkrkit.NewT(t).ImgLs(dkrkit.WithImgLsFilter("reference=" + ref))
+		assert.NotNil(t, ims.FindByRef(ref))
+	})
+
+	t.Run("image never built", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.DockerfileReq()
+		req.Repo, req.Tag = RandName(), RandTag()
+		ctr := &CTR{runReq: req}
+
+		// --- When ---
+		err := ctr.removeBuiltImage(t.Context())
+
+		// --- Then ---
+		assert.NoError(t, err)
 	})
 }
