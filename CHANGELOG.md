@@ -1,3 +1,6 @@
+## v0.3.0 (Wed, 14 Oct 2026 19:53:05 UTC)
+- feat(xctr)!: share built images between identical Dockerfile requests.
+
 ## v0.2.0 (Wed, 14 Oct 2026 09:11:10 UTC)
 - perf(xctr)!: kill test containers at once and build with BuildKit.
 - feat(xctr): add Sweep to remove what the reaper left behind.
