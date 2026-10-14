@@ -1,3 +1,9 @@
+## v0.2.0 (Wed, 14 Oct 2026 09:11:10 UTC)
+- perf(xctr)!: kill test containers at once and build with BuildKit.
+- feat(xctr): add Sweep to remove what the reaper left behind.
+- test(xctr): sweep reaper leftovers after each test run.
+- docs(xctr): use a one-minute grace in the Sweep example.
+
 ## v0.1.1 (Sat, 10 Oct 2026 19:29:33 UTC)
 - build(deps): update 4 ctx42 dependencies.
 
