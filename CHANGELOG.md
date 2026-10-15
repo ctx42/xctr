@@ -1,3 +1,6 @@
+## v0.3.1 (Thu, 15 Oct 2026 14:59:08 UTC)
+- chore(deps): update dependencies.
+
 ## v0.3.0 (Wed, 14 Oct 2026 19:53:05 UTC)
 - feat(xctr)!: share built images between identical Dockerfile requests.
 
