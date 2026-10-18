@@ -2216,29 +2216,60 @@ func Test_daemonBuilder(t *testing.T) {
 }
 
 func Test_buildMeta(t *testing.T) {
-	// --- Given ---
-	env := []string{
-		xdef.EnvBldDate + "=2000-01-02T03:04:05Z",
-	}
-	scm := scmInfo{repo: "repo", rev: "rev", hash: "hash"}
+	t.Run("outside CI", func(t *testing.T) {
+		// --- Given ---
+		env := []string{
+			xdef.EnvBldDate + "=2000-01-02T03:04:05Z",
+		}
+		scm := scmInfo{repo: "repo", rev: "rev", hash: "hash"}
 
-	// --- When ---
-	have := buildMeta(env, "ctr-name", scm)
+		// --- When ---
+		have := buildMeta(env, "ctr-name", scm)
 
-	// --- Then ---
-	assert.Equal(t, map[string]string{
-		xdef.LabImgSrc:     "repo",
-		xdef.LabImgVer:     "rev",
-		xdef.LabImgRev:     "hash",
-		xdef.LabImgCreated: "2000-01-02T03:04:05Z",
-		LabTestCtrName:     "ctr-name",
-	}, have.labels)
-	assert.Equal(t, map[string]string{
-		xdef.EnvBldDate: "2000-01-02T03:04:05Z",
-		xdef.EnvScmRepo: "repo",
-		xdef.EnvScmRev:  "rev",
-		xdef.EnvScmHash: "hash",
-	}, have.env)
+		// --- Then ---
+		assert.Equal(t, map[string]string{
+			xdef.LabImgSrc:     "repo",
+			xdef.LabImgVer:     "rev",
+			xdef.LabImgRev:     "hash",
+			xdef.LabImgCreated: "2000-01-02T03:04:05Z",
+			LabTestCtrName:     "ctr-name",
+		}, have.labels)
+		assert.Equal(t, map[string]string{
+			xdef.EnvBldDate: "2000-01-02T03:04:05Z",
+			xdef.EnvScmRepo: "repo",
+			xdef.EnvScmRev:  "rev",
+			xdef.EnvScmHash: "hash",
+		}, have.env)
+	})
+
+	t.Run("explicit run ID", func(t *testing.T) {
+		// --- Given ---
+		env := []string{xdef.EnvCCRunID + "=run-1"}
+
+		// --- When ---
+		have := buildMeta(env, "ctr-name", scmInfo{})
+
+		// --- Then ---
+		assert.Equal(t, "run-1", have.labels[xdef.LabCCRunID])
+		assert.HasNoKey(t, xdef.EnvCCRunID, have.env)
+	})
+
+	t.Run("run ID derived from the CI system", func(t *testing.T) {
+		// --- Given ---
+		env := []string{
+			"GITHUB_ACTIONS=true",
+			"GITHUB_REPOSITORY=ctx42/xctr",
+			"GITHUB_RUN_ID=1234567890",
+			"GITHUB_RUN_ATTEMPT=1",
+		}
+
+		// --- When ---
+		have := buildMeta(env, "ctr-name", scmInfo{})
+
+		// --- Then ---
+		want := "github-ctx42/xctr-1234567890-1"
+		assert.Equal(t, want, have.labels[xdef.LabCCRunID])
+	})
 }
 
 func Test_prepareRequest(t *testing.T) {
@@ -2549,6 +2580,46 @@ func Test_prepareRequest(t *testing.T) {
 		// --- Then ---
 		assert.Equal(t, "keep", have.Env[xdef.EnvBldDate])
 	})
+
+	t.Run("run ID labels the container", func(t *testing.T) {
+		// --- Given ---
+		env := []string{xdef.EnvCCRunID + "=run-1"}
+		meta := buildMeta(env, "echo", scmInfo{})
+
+		// --- When ---
+		have := prepareRequest(xctrtest.ImageReq(), meta, env, nil)
+
+		// --- Then ---
+		assert.Equal(t, "run-1", have.Labels[xdef.LabCCRunID])
+	})
+
+	t.Run("run ID labels the built image", func(t *testing.T) {
+		// --- Given ---
+		env := []string{xdef.EnvCCRunID + "=run-1"}
+		meta := buildMeta(env, "echo", scmInfo{})
+
+		// --- When ---
+		have := prepareRequest(xctrtest.DockerfileReq(), meta, env, nil)
+
+		// --- Then ---
+		opts := &client.ImageBuildOptions{}
+		have.BuildOptionsModifier(opts)
+		assert.Equal(t, "run-1", opts.Labels[xdef.LabCCRunID])
+	})
+
+	t.Run("caller run ID label wins", func(t *testing.T) {
+		// --- Given ---
+		req := xctrtest.ImageReq()
+		req.Labels = map[string]string{xdef.LabCCRunID: "mine"}
+		env := []string{xdef.EnvCCRunID + "=run-1"}
+		meta := buildMeta(env, "echo", scmInfo{})
+
+		// --- When ---
+		have := prepareRequest(req, meta, env, nil)
+
+		// --- Then ---
+		assert.Equal(t, "mine", have.Labels[xdef.LabCCRunID])
+	})
 }
 
 func Test_CTR_Start(t *testing.T) {
@@ -2632,6 +2703,25 @@ func Test_CTR_Start(t *testing.T) {
 		}
 		assert.MapSubset(t, wLabels, hCtr.Labels)
 		httpkit.NewRequest(t).Get(endpoint(ctr))
+	})
+
+	t.Run("run ID labels container and built image", func(t *testing.T) {
+		// --- Given ---
+		ctx := t.Context()
+		env := []string{xdef.EnvCCRunID + "=" + t.Name()}
+		ctr := NewCTR("echo run", xctrtest.DockerfileReq(), WithCTROwnImage)
+		t.Cleanup(func() {
+			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
+		})
+
+		// --- When ---
+		err := ctr.Start(ctx, env)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		dkr := dkrkit.NewT(t)
+		assert.Equal(t, t.Name(), dkr.Label(ctr.ID(), xdef.LabCCRunID))
+		assert.Equal(t, t.Name(), dkr.Label(ctr.Reference(), xdef.LabCCRunID))
 	})
 
 	t.Run("from Dockerfile not started", func(t *testing.T) {

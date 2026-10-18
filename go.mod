@@ -4,11 +4,11 @@ go 1.26.0
 
 require (
 	github.com/containerd/errdefs v1.0.0
-	github.com/ctx42/gitaid v0.18.0
-	github.com/ctx42/ring v0.8.1
-	github.com/ctx42/testing v0.57.0
-	github.com/ctx42/testkit v0.16.2
-	github.com/ctx42/xdef v0.9.1
+	github.com/ctx42/gitaid v0.18.1
+	github.com/ctx42/ring v0.8.2
+	github.com/ctx42/testing v0.57.1
+	github.com/ctx42/testkit v0.16.3
+	github.com/ctx42/xdef v0.10.1
 	github.com/distribution/reference v0.6.0
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
@@ -28,7 +28,7 @@ require (
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/docker/go-connections v0.8.2 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/ebitengine/purego v0.11.1 // indirect
+	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

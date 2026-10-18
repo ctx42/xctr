@@ -826,18 +826,24 @@ func daemonBuilder(ctx context.Context) build.BuilderVersion {
 	return daemonBld
 }
 
-// buildMeta builds [startMeta] from env, container name, and SCM info.
-// It is pure: no git or Docker calls.
+// buildMeta builds [startMeta] from env, container name, and SCM info. When
+// env belongs to a CI/CD run (see [xdef.CCRunID]), the labels also carry the
+// run's ID, so the run can remove the containers and images it created. It is
+// pure: no git or Docker calls.
 func buildMeta(env []string, name string, scm scmInfo) startMeta {
 	bldDate := xdef.BldDate(env)
+	labels := map[string]string{
+		xdef.LabImgSrc:     scm.repo,
+		xdef.LabImgVer:     scm.rev,
+		xdef.LabImgRev:     scm.hash,
+		xdef.LabImgCreated: bldDate,
+		LabTestCtrName:     name,
+	}
+	if runID := xdef.CCRunID(env); runID != "" {
+		labels[xdef.LabCCRunID] = runID
+	}
 	return startMeta{
-		labels: map[string]string{
-			xdef.LabImgSrc:     scm.repo,
-			xdef.LabImgVer:     scm.rev,
-			xdef.LabImgRev:     scm.hash,
-			xdef.LabImgCreated: bldDate,
-			LabTestCtrName:     name,
-		},
+		labels: labels,
 		env: map[string]string{
 			xdef.EnvBldDate: bldDate,
 			xdef.EnvScmRepo: scm.repo,

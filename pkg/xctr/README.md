@@ -197,6 +197,13 @@ In addition to the `xdef` labels described above, `Start` sets the
 `dev.ctx42.test.ctr.name` label (`xctr.LabTestCtrName`) to the name passed to
 `NewCTR`.
 
+In a CI/CD run, `Start` also sets `dev.ctx42.cc.run.id` (`xdef.LabCCRunID`)
+on the container and on the image it builds, to the run ID `xdef.CCRunID`
+returns: `C42_CC_RUN_ID` when set, otherwise one derived from the Jenkins,
+GitHub Actions, or GitLab CI variables. The run can then remove what its tests
+left behind by that label. Outside CI/CD there is no run ID and no label. A
+label the request already sets is kept.
+
 ### Built images
 
 Images built from a Dockerfile are ephemeral. Containers of identical
