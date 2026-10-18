@@ -1,3 +1,7 @@
+## v0.4.0 (Sun, 18 Oct 2026 08:25:23 UTC)
+- ci: set C42_CC_RUN_ID in the workflow environment.
+- feat(xctr): label containers and images with the CI/CD run ID.
+
 ## v0.3.1 (Thu, 15 Oct 2026 14:59:08 UTC)
 - chore(deps): update dependencies.
 
