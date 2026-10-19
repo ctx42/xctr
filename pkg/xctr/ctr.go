@@ -668,7 +668,8 @@ func deleteImage(ctx context.Context, ref string) error {
 	var ers error
 	for _, sum := range list.Items {
 		imgID := strings.TrimPrefix(sum.ID, "sha256:")
-		if _, err = cli.ImageRemove(ctx, imgID, rmOpts); err != nil {
+		// Another reference to the same image may have removed it first.
+		if _, err = cli.ImageRemove(ctx, imgID, rmOpts); handleErr(err) {
 			err = fmt.Errorf("remove image %s: %w", imgID, err)
 			ers = errors.Join(ers, err)
 		}
@@ -677,8 +678,8 @@ func deleteImage(ctx context.Context, ref string) error {
 }
 
 // handleErr returns true if the error is one we need to handle by returning
-// it from a method, otherwise the error is ignored. A missing container and a
-// removal already in progress are ignored.
+// it from a method, otherwise the error is ignored. A missing container or
+// image and a removal already in progress are ignored.
 func handleErr(err error) bool {
 	switch {
 	case err == nil, cerrdefs.IsNotFound(err):

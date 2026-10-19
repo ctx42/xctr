@@ -1969,6 +1969,29 @@ func Test_deleteImage(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Nil(t, dkrkit.NewT(t).ImgLs(byRef).FindByID(imgID))
 	})
+
+	t.Run("references to one image removed concurrently", func(t *testing.T) {
+		// --- Given ---
+		imgRef, imgID := dkrkit.NewT(t).Build(
+			dkrkit.WithBuildPth("xctrtest/data/simple/Dockerfile"),
+		)
+		other := imgRef + "-other"
+		cli := xctrtest.NewClient(t)
+		opts := client.ImageTagOptions{Source: imgRef, Target: other}
+		_, err := cli.ImageTag(t.Context(), opts)
+		assert.NoError(t, err)
+
+		// --- When ---
+		errs := make(chan error, 2)
+		for _, ref := range []string{imgRef, other} {
+			go func() { errs <- deleteImage(t.Context(), ref) }()
+		}
+
+		// --- Then ---
+		assert.NoError(t, <-errs)
+		assert.NoError(t, <-errs)
+		assert.Nil(t, dkrkit.NewT(t).ImgLs().FindByID(imgID))
+	})
 }
 
 func Test_handleErr(t *testing.T) {
@@ -1992,6 +2015,7 @@ func Test_handleErr_tabular(t *testing.T) {
 	}{
 		{"in progress", cerrdefs.ErrConflict.WithMessage(inProgress), false},
 		{"not found", cerrdefs.ErrNotFound.WithMessage("container abc"), false},
+		{"image not found", cerrdefs.ErrNotFound.WithMessage("image abc"), false},
 		{"wrapped", fmt.Errorf("stop: %w", cerrdefs.ErrNotFound), false},
 		{"other conflict", cerrdefs.ErrConflict.WithMessage("paused"), true},
 		{"untyped", errors.New("No such container: abc"), true},
