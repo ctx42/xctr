@@ -1,3 +1,6 @@
+## v0.4.1 (Mon, 19 Oct 2026 21:49:03 UTC)
+- fix(xctr): ignore an image already removed in Terminate.
+
 ## v0.4.0 (Sun, 18 Oct 2026 08:25:23 UTC)
 - ci: set C42_CC_RUN_ID in the workflow environment.
 - feat(xctr): label containers and images with the CI/CD run ID.
