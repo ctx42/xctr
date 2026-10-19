@@ -643,7 +643,8 @@ func (ctr *CTR) Terminate(ctx context.Context) (err error) {
 	return deleteImage(ctx, ref)
 }
 
-// deleteImage force-removes every image matching the reference.
+// deleteImage force-removes the tags matching the reference, and with the
+// last tag the image. An image tagged under other references stays for them.
 func deleteImage(ctx context.Context, ref string) error {
 	cli, err := tc.NewDockerClientWithOpts(ctx)
 	if err != nil {
@@ -667,14 +668,31 @@ func deleteImage(ctx context.Context, ref string) error {
 	rmOpts := client.ImageRemoveOptions{Force: true, PruneChildren: true}
 	var ers error
 	for _, sum := range list.Items {
-		imgID := strings.TrimPrefix(sum.ID, "sha256:")
-		// Another reference to the same image may have removed it first.
-		if _, err = cli.ImageRemove(ctx, imgID, rmOpts); handleErr(err) {
-			err = fmt.Errorf("remove image %s: %w", imgID, err)
-			ers = errors.Join(ers, err)
+		tags := matchingTags(sum.RepoTags, filter)
+		if len(tags) == 0 {
+			tags = []string{strings.TrimPrefix(sum.ID, "sha256:")}
+		}
+		for _, tag := range tags {
+			// Another reference to the same image may have removed it first.
+			if _, err = cli.ImageRemove(ctx, tag, rmOpts); handleErr(err) {
+				err = fmt.Errorf("remove image %s: %w", tag, err)
+				ers = errors.Join(ers, err)
+			}
 		}
 	}
 	return ers
+}
+
+// matchingTags returns the tags the reference filter selects: the filter
+// itself, or every tag of its repository when the filter names no tag.
+func matchingTags(tags []string, filter string) []string {
+	var have []string
+	for _, tag := range tags {
+		if tag == filter || strings.HasPrefix(tag, filter+":") {
+			have = append(have, tag)
+		}
+	}
+	return have
 }
 
 // handleErr returns true if the error is one we need to handle by returning

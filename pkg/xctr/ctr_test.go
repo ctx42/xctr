@@ -1970,6 +1970,29 @@ func Test_deleteImage(t *testing.T) {
 		assert.Nil(t, dkrkit.NewT(t).ImgLs(byRef).FindByID(imgID))
 	})
 
+	t.Run("image stays for another reference", func(t *testing.T) {
+		// --- Given ---
+		imgRef, imgID := dkrkit.NewT(t).Build(
+			dkrkit.WithBuildPth("xctrtest/data/simple/Dockerfile"),
+		)
+		other := imgRef + "-other"
+		cli := xctrtest.NewClient(t)
+		opts := client.ImageTagOptions{Source: imgRef, Target: other}
+		_, err := cli.ImageTag(t.Context(), opts)
+		assert.NoError(t, err)
+
+		// --- When ---
+		err = deleteImage(t.Context(), imgRef)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		img := dkrkit.NewT(t).ImgLs().FindByID(imgID)
+		assert.NotNil(t, img)
+		assert.Nil(t, dkrkit.NewT(t).ImgLs().FindByRef(imgRef))
+		assert.NoError(t, deleteImage(t.Context(), other))
+		assert.Nil(t, dkrkit.NewT(t).ImgLs().FindByID(imgID))
+	})
+
 	t.Run("references to one image removed concurrently", func(t *testing.T) {
 		// --- Given ---
 		imgRef, imgID := dkrkit.NewT(t).Build(
@@ -1991,6 +2014,34 @@ func Test_deleteImage(t *testing.T) {
 		assert.NoError(t, <-errs)
 		assert.NoError(t, <-errs)
 		assert.Nil(t, dkrkit.NewT(t).ImgLs().FindByID(imgID))
+	})
+}
+
+func Test_matchingTags(t *testing.T) {
+	tags := []string{"repo/a:v1", "repo/a:v2", "repo/ab:v1", "other:v1"}
+
+	t.Run("reference with tag", func(t *testing.T) {
+		// --- When ---
+		have := matchingTags(tags, "repo/a:v1")
+
+		// --- Then ---
+		assert.Equal(t, []string{"repo/a:v1"}, have)
+	})
+
+	t.Run("reference without tag", func(t *testing.T) {
+		// --- When ---
+		have := matchingTags(tags, "repo/a")
+
+		// --- Then ---
+		assert.Equal(t, []string{"repo/a:v1", "repo/a:v2"}, have)
+	})
+
+	t.Run("no match", func(t *testing.T) {
+		// --- When ---
+		have := matchingTags(tags, "repo/c")
+
+		// --- Then ---
+		assert.Nil(t, have)
 	})
 }
 
