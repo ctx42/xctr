@@ -1,3 +1,6 @@
+## v0.4.3 (Wed, 21 Oct 2026 21:29:27 UTC)
+- chore(deps): update dependencies.
+
 ## v0.4.2 (Mon, 19 Oct 2026 22:10:41 UTC)
 - fix(xctr): remove only the reference's tags in Terminate.
 
