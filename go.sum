@@ -24,8 +24,8 @@ github.com/cpuguy83/dockercfg v0.3.2 h1:DlJTyZGBDlXqUZ2Dk2Q3xHs/FtnooJJVaad2S9GK
 github.com/cpuguy83/dockercfg v0.3.2/go.mod h1:sugsbF4//dDlL/i+S+rtpIWp+5h0BHJHfjj5/jFyUJc=
 github.com/creack/pty v1.1.24 h1:bJrF4RRfyJnbTJqzRLHzcGaZK1NeM5kTC9jGgovnR1s=
 github.com/creack/pty v1.1.24/go.mod h1:08sCNb52WyoAwi2QDyzUCTgcvVFhUzewun7wtTfvcwE=
-github.com/ctx42/gitaid v0.18.1 h1:R9v3Y/Dgy8RB0bS3hY4f9qxbgG5MM1288uwHO+ybHlo=
-github.com/ctx42/gitaid v0.18.1/go.mod h1:m73MKL7QvBhbRF/MXj+/dsjn7ZG8p2InBFw3u7DiNYs=
+github.com/ctx42/gitaid v0.20.0 h1:rk5MWIsnGEx02yQu/y2sZHB8HZR2OBgeQ53aK/xGr3Q=
+github.com/ctx42/gitaid v0.20.0/go.mod h1:m73MKL7QvBhbRF/MXj+/dsjn7ZG8p2InBFw3u7DiNYs=
 github.com/ctx42/ring v0.8.2 h1:Cf2bksHABA/uZM2+Nn9TQgvpWHaOMhVlenBYZJ4hdvo=
 github.com/ctx42/ring v0.8.2/go.mod h1:1/1t9RWlLwktfzkO7iISiICOzQ57o8ASYX0FulRcMgs=
 github.com/ctx42/testing v0.57.1 h1:/yQWQeHLMK6WkiHfO/5d+a3yqY8JU+h4f6UUknMRPKA=
