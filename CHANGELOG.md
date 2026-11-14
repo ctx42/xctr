@@ -1,3 +1,7 @@
+## v0.4.5 (Sat, 14 Nov 2026 23:28:38 UTC)
+- test(xctr): keep killed containers from racing their removal.
+- test(xctr): expect the daemon host in the started host config.
+
 ## v0.4.4 (Fri, 23 Oct 2026 20:08:59 UTC)
 - chore(deps): update dependencies.
 
