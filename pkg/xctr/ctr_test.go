@@ -2901,7 +2901,7 @@ func Test_CTR_Start(t *testing.T) {
 		wMap = map[string]string{
 			"PORT_0": wPort80.String(),
 			"PORT_1": wPortPort.String(),
-			"HOST":   "localhost",
+			"HOST":   must.Value(ctr.dc.Host(ctx)),
 		}
 		assert.Equal(t, wMap, ctr.cfgHost)
 	})
