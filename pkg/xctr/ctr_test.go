@@ -654,7 +654,11 @@ func Test_CTR_Exec(t *testing.T) {
 	t.Run("error - stopped container", func(t *testing.T) {
 		// --- Given ---
 		ctx := t.Context()
-		ctr := NewCTR("echo", xctrtest.ImageReq())
+		req := xctrtest.ImageReq()
+		// Without AutoRemove the killed container stays, so it is not running
+		// rather than gone.
+		req.HostConfigModifier = nil
+		ctr := NewCTR("echo", req)
 		assert.NoError(t, ctr.Start(ctx, nil))
 		t.Cleanup(func() {
 			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
@@ -862,6 +866,9 @@ func Test_CTR_ExecContent(t *testing.T) {
 			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
 		})
 		dkrkit.NewT(t).CtrKill(ctr.ID())
+		// AutoRemove removes the killed container; the copy fails only once
+		// it is gone.
+		ctrGone(t, ctr.ID())
 		content := []byte("#!/bin/sh\necho hi\n")
 
 		// --- When ---
@@ -1679,7 +1686,11 @@ func Test_CTR_Pause(t *testing.T) {
 	t.Run("error - not running container", func(t *testing.T) {
 		// --- Given ---
 		ctx := t.Context()
-		ctr := NewCTR("echo", xctrtest.ImageReq())
+		req := xctrtest.ImageReq()
+		// Without AutoRemove the killed container stays, so it is not running
+		// rather than gone.
+		req.HostConfigModifier = nil
+		ctr := NewCTR("echo", req)
 		assert.NoError(t, ctr.Start(ctx, nil))
 		t.Cleanup(func() {
 			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
@@ -1746,7 +1757,11 @@ func Test_CTR_Unpause(t *testing.T) {
 	t.Run("error - not running container", func(t *testing.T) {
 		// --- Given ---
 		ctx := t.Context()
-		ctr := NewCTR("echo", xctrtest.ImageReq())
+		req := xctrtest.ImageReq()
+		// Without AutoRemove the killed container stays, so it is not running
+		// rather than gone.
+		req.HostConfigModifier = nil
+		ctr := NewCTR("echo", req)
 		assert.NoError(t, ctr.Start(ctx, nil))
 		t.Cleanup(func() {
 			assert.NoError(t, ctr.Cleanup(context.WithoutCancel(ctx)))
