@@ -11,11 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/moby/client"
+	tc "github.com/testcontainers/testcontainers-go"
+
 	"github.com/ctx42/testing/pkg/assert"
 	"github.com/ctx42/testing/pkg/must"
 	"github.com/ctx42/xdef/pkg/xdef"
-	"github.com/moby/moby/client"
-	tc "github.com/testcontainers/testcontainers-go"
 
 	"github.com/ctx42/xctr/pkg/xctr/xctrtest"
 )
@@ -253,9 +254,10 @@ func Test_buildImage(t *testing.T) {
 		// --- Given ---
 		req := xctrtest.DockerfileReq()
 		req.Repo, req.Tag = RandName(), RandTag()
+		cli := dockerClient(t)
 		t.Cleanup(func() {
 			ctx := context.WithoutCancel(t.Context())
-			_ = untag(ctx, dockerClient(t), req.Repo+":"+req.Tag)
+			_ = untag(ctx, cli, req.Repo+":"+req.Tag)
 		})
 
 		// --- When ---
