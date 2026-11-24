@@ -1,3 +1,6 @@
+## v0.4.6 (Tue, 24 Nov 2026 14:42:02 UTC)
+- test(xctr): get the Docker client before the image cleanup.
+
 ## v0.4.5 (Sat, 14 Nov 2026 23:28:38 UTC)
 - test(xctr): keep killed containers from racing their removal.
 - test(xctr): expect the daemon host in the started host config.
